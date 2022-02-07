@@ -1,0 +1,22 @@
+#include <stdarg.h>
+#include <stdbool.h>
+#include <switch.h>
+#include "utils.h"
+
+bool log_to_fb_console;
+
+void __attribute__ ((format (printf, 1, 2))) LOG(const char *fmt, ...)
+{
+	char buf[256];
+	va_list argptr;
+	int n;
+
+	va_start(argptr, fmt);
+	n = vsnprintf(buf, sizeof(buf), fmt, argptr);
+	va_end(argptr);
+
+	svcOutputDebugString(buf, n);
+
+	if (log_to_fb_console)
+		puts(buf);
+}
