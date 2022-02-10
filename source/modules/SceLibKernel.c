@@ -11,7 +11,7 @@ void *sceKernelGetTLSAddr(int key)
 
 	if (key >= 0 && key <= 0x100) {
 		ti = SceKernelThreadMgr_get_thread_info();
-		return ti->vita_tls[key];
+		return &ti->vita_tls[key];
 	}
 
 	return NULL;
