@@ -6,7 +6,9 @@
 #include "arm-encode.h"
 #include "load.h"
 #include "log.h"
+#include "miniz.h"
 #include "sce-elf.h"
+#include "self.h"
 #include "utils.h"
 
 #define IMP_GET_NEXT(imp) ((sce_module_imports_u_t *)((char *)imp + imp->size))
@@ -22,8 +24,23 @@
 #define CODE_RX_TO_RW_ADDR(rx_base, rw_base, rx_addr) \
 	((((uintptr_t)rx_addr - (uintptr_t)rx_base)) + (uintptr_t)rw_base)
 
-int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_imports_u_t *import);
-int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs);
+typedef struct {
+	void *src_data;
+	uintptr_t rw_addr;
+	uintptr_t rx_addr; /* Only used for executable segments */
+	Elf32_Word p_type;
+	Elf32_Word p_filesz;
+	Elf32_Word p_memsz;
+	Elf32_Word p_flags;
+	Elf32_Word p_align;
+	bool needs_free;
+} segment_info_t;
+
+static int load_elf(Jit *jit, const void *data, void **entry);
+static int load_self(Jit *jit, const void *data, void **entry);
+static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_info_t *segments, int num_segments);
+static int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_imports_u_t *import);
+static int relocate(const void *reloc, uint32_t size, segment_info_t *segs);
 
 extern void sceKernelAllocMemBlock();
 extern void sceKernelGetMemBlockBase();
@@ -94,20 +111,20 @@ int elf_check_vita_header(const Elf32_Ehdr *hdr)
 	return 0;
 }
 
-static int elf_get_sce_module_info(const Elf32_Ehdr *elf_hdr, const Elf32_Phdr *elf_phdrs, sce_module_info_raw **mod_info)
+static int elf_get_sce_module_info(Elf32_Addr e_entry, const segment_info_t *segments, sce_module_info_raw **mod_info)
 {
 	uint32_t offset;
 	uint32_t index;
 
-	index = ((uint32_t)elf_hdr->e_entry & 0xC0000000) >> 30;
-	offset = (uint32_t)elf_hdr->e_entry & 0x3FFFFFFF;
+	index = (e_entry & 0xC0000000) >> 30;
+	offset = e_entry & 0x3FFFFFFF;
 
-	if (elf_phdrs[index].p_vaddr == 0) {
+	if (segments[index].src_data == NULL) {
 		LOG("Invalid segment index %ld\n", index);
 		return -1;
 	}
 
-	*mod_info = (sce_module_info_raw *)((char *)elf_phdrs[index].p_vaddr + offset);
+	*mod_info = (sce_module_info_raw *)((char *)segments[index].src_data + offset);
 
 	return index;
 }
@@ -117,7 +134,6 @@ int load_exe(Jit *jit, const char *filename, void **entry)
 	void *data;
 	uint32_t size;
 	uint8_t *magic;
-	uint32_t offset;
 
 	LOG("Opening %s for reading.", filename);
 	if (utils_load_file(filename, &data, &size) != 0) {
@@ -137,10 +153,9 @@ int load_exe(Jit *jit, const char *filename, void **entry)
 		}
 	} else if (magic[0] == SCEMAG0) {
 		if (magic[1] == SCEMAG1 && magic[2] == SCEMAG2 && magic[3] == SCEMAG3) {
-			offset = ((uint32_t *)data)[4];
-			LOG("Loading FSELF. ELF offset at 0x%08lx", offset);
-			if (load_elf(jit, (void *)((uintptr_t)data + offset), entry) < 0) {
-				LOG("Cannot load FSELF.");
+			LOG("Found a SELF, loading.");
+			if (load_self(jit, data, entry) < 0) {
+				LOG("Cannot load SELF.");
 				return -1;
 			}
 		}
@@ -153,19 +168,128 @@ int load_exe(Jit *jit, const char *filename, void **entry)
 	return 0;
 }
 
-int load_elf(Jit *jit, const void *data, void **entry)
+static int load_self(Jit *jit, const void *data, void **entry)
+{
+	const SCE_header *self_header = data;
+	const Elf32_Ehdr *elf_hdr = (void *)((char *)data + self_header->elf_offset);
+	const Elf32_Phdr *prog_hdrs = (void *)((char *)data + self_header->phdr_offset);
+	const segment_info *seg_infos = (void *)((char *)data + self_header->section_info_offset);
+	segment_info_t *segments;
+	const Elf32_Phdr *seg_header;
+	uint8_t *seg_bytes;
+	void *uncompressed;
+	mz_ulong dest_bytes;
+	int ret;
+
+	if (self_header->magic != 0x00454353) {
+		LOG("SELF is corrupt or encrypted. Decryption is not yet supported.");
+		return -1;
+	}
+
+	if (self_header->version != 3) {
+		LOG("SELF version 0x%lx is not supported.", self_header->version);
+		return -1;
+	}
+
+	if (self_header->header_type != 1) {
+		LOG("SELF header type 0x%x is not supported.", self_header->header_type);
+		return -1;
+	}
+
+	LOG("Loading SELF: ELF type: 0x%x, header_type: 0x%x, self_filesize: 0x%llx, self_offset: 0x%llx",
+		elf_hdr->e_type, self_header->header_type, self_header->self_filesize, self_header->self_offset);
+
+	/* Make sure it contains a PSVita ELF */
+	if (elf_check_vita_header(elf_hdr) < 0) {
+		LOG("Check header failed.");
+		return -1;
+	}
+
+	segments = calloc(elf_hdr->e_phnum, sizeof(segment_info_t));
+	if (!segments)
+		return -1;
+
+	for (Elf32_Half i = 0; i < elf_hdr->e_phnum; i++) {
+		seg_header = &prog_hdrs[i];
+		seg_bytes = (uint8_t *)data + self_header->header_len + seg_header->p_offset;
+
+		LOG("Segment %i: encryption: %lld, compression: %lld", i,
+		    seg_infos[i].encryption, seg_infos[i].compression);
+
+		segments[i].p_type = seg_header->p_type;
+		segments[i].p_filesz = seg_header->p_filesz;
+		segments[i].p_memsz = seg_header->p_memsz;
+		segments[i].p_flags = seg_header->p_flags;
+		segments[i].p_align = seg_header->p_align;
+
+		if ((seg_header->p_type == PT_LOAD) && (seg_header->p_memsz != 0)) {
+			if (seg_infos[i].compression == 2) {
+				dest_bytes = seg_header->p_filesz;
+				uncompressed = malloc(seg_header->p_memsz);
+				if (!uncompressed) {
+					ret = -1;
+					goto done;
+				}
+
+				ret = mz_uncompress(uncompressed, &dest_bytes,
+						    (uint8_t *)data + seg_infos[i].offset,
+						    seg_infos[i].length);
+				if (ret != MZ_OK) {
+					ret = -1;
+					goto done;
+				}
+
+				segments[i].src_data = uncompressed;
+				segments[i].needs_free = true;
+			} else {
+				segments[i].src_data = seg_bytes;
+
+			}
+		} else if (seg_header->p_type == PT_LOOS) {
+			if (seg_infos[i].compression == 2) {
+				dest_bytes = seg_header->p_filesz;
+				uncompressed = malloc(seg_header->p_filesz);
+				if (!uncompressed) {
+					ret = -1;
+					goto done;
+				}
+
+				ret = mz_uncompress(uncompressed, &dest_bytes,
+						    (uint8_t *)data + seg_infos[i].offset,
+						    seg_infos[i].length);
+				if (ret != MZ_OK) {
+					ret = -1;
+					goto done;
+				}
+
+				segments[i].src_data = uncompressed;
+				segments[i].needs_free = true;
+			} else {
+				segments[i].src_data = seg_bytes;
+			}
+		} else {
+			LOG("Unknown segment type 0x%lx", seg_header->p_type);
+		}
+	}
+
+	ret = load_segments(jit, entry, elf_hdr->e_entry, segments, elf_hdr->e_phnum);
+
+done:
+	for (Elf32_Half i = 0; i < elf_hdr->e_phnum; i++) {
+		if (segments[i].needs_free)
+			free(segments[i].src_data);
+	}
+
+	free(segments);
+
+	return ret;
+}
+
+static int load_elf(Jit *jit, const void *data, void **entry)
 {
 	const Elf32_Ehdr *elf_hdr = data;
 	Elf32_Phdr *prog_hdrs;
-	uint32_t code_size = 0, data_size = 0;
-	uint32_t code_offset = 0, data_offset = 0;
-	uintptr_t data_addr, code_rw_addr, code_rx_addr;
-	uintptr_t addr_rw, addr_rx;
-	uint32_t length;
-	sce_module_info_raw *mod_info;
-	const char *imp_name;
-	int mod_info_idx;
-	Result res;
+	int ret;
 
 	/* Make sure it's a PSVita ELF */
 	if (elf_check_vita_header(elf_hdr) < 0) {
@@ -180,14 +304,44 @@ int load_elf(Jit *jit, const void *data, void **entry)
 	}
 
 	/* Read ELF program headers */
-	IF_VERBOSE LOG("Reading program headers.");
+	LOG("Reading program headers.");
 	prog_hdrs = (void *)((uintptr_t)data + elf_hdr->e_phoff);
 
-	/* Calculate total code and data sizes */
+	segment_info_t *segments = calloc(elf_hdr->e_phnum, sizeof(segment_info_t));
+
 	for (Elf32_Half i = 0; i < elf_hdr->e_phnum; i++) {
-		if (prog_hdrs[i].p_type == PT_LOAD) {
-			length = prog_hdrs[i].p_memsz + prog_hdrs[i].p_align;
-			if ((prog_hdrs[i].p_flags & PF_X) == PF_X)
+		segments[i].src_data = (char *)data + prog_hdrs[i].p_offset;
+		segments[i].p_type = prog_hdrs[i].p_type;
+		segments[i].p_filesz = prog_hdrs[i].p_filesz;
+		segments[i].p_memsz = prog_hdrs[i].p_memsz;
+		segments[i].p_flags = prog_hdrs[i].p_flags;
+		segments[i].p_align = prog_hdrs[i].p_align;
+	}
+
+	ret = load_segments(jit, entry, elf_hdr->e_entry, segments, elf_hdr->e_phnum);
+
+	free(segments);
+
+	return ret;
+}
+
+static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_info_t *segments, int num_segments)
+{
+	uint32_t code_size = 0, data_size = 0;
+	uint32_t code_offset = 0, data_offset = 0;
+	uintptr_t data_addr, code_rw_addr, code_rx_addr;
+	uintptr_t addr_rw, addr_rx;
+	uint32_t length;
+	sce_module_info_raw *mod_info;
+	const char *imp_name;
+	int mod_info_idx;
+	Result res;
+
+	/* Calculate total code and data sizes */
+	for (int i = 0; i < num_segments; i++) {
+		if (segments[i].p_type == PT_LOAD) {
+			length = segments[i].p_memsz + segments[i].p_align;
+			if ((segments[i].p_flags & PF_X) == PF_X)
 				code_size += length;
 			else
 				data_size += length;
@@ -222,41 +376,39 @@ int load_elf(Jit *jit, const void *data, void **entry)
 		goto err_free_data;
 	}
 
-	for (Elf32_Half i = 0; i < elf_hdr->e_phnum; i++) {
-		if (prog_hdrs[i].p_type == PT_LOAD) {
+	for (int i = 0; i < num_segments; i++) {
+		if (segments[i].p_type == PT_LOAD) {
 			LOG("Found loadable segment (%u)", i);
-			LOG("  p_offset: 0x%lx", prog_hdrs[i].p_offset);
-			LOG("  p_filesz: 0x%lx", prog_hdrs[i].p_filesz);
-			LOG("  p_memsz:  0x%lx", prog_hdrs[i].p_align);
-			LOG("  p_align:  0x%lx", prog_hdrs[i].p_align);
+			LOG("  p_filesz: 0x%lx", segments[i].p_filesz);
+			LOG("  p_memsz:  0x%lx", segments[i].p_align);
+			LOG("  p_align:  0x%lx", segments[i].p_align);
 
-			if ((prog_hdrs[i].p_flags & PF_X) == PF_X) {
-				length = ALIGN(code_rx_addr, prog_hdrs[i].p_align) - code_rx_addr;
+			if ((segments[i].p_flags & PF_X) == PF_X) {
+				length = ALIGN(code_rx_addr, segments[i].p_align) - code_rx_addr;
 				addr_rx = code_rx_addr + code_offset;
 				addr_rw = code_rw_addr + code_offset;
-				code_offset += prog_hdrs[i].p_memsz;
+				code_offset += segments[i].p_memsz;
 			} else {
-				length = ALIGN(data_addr, prog_hdrs[i].p_align) - data_addr;
+				length = ALIGN(data_addr, segments[i].p_align) - data_addr;
 				addr_rw = addr_rx = data_addr + data_offset;
-				data_offset += prog_hdrs[i].p_memsz;
+				data_offset += segments[i].p_memsz;
 			}
 
-			/* If it's a code segment, store the RX JIT area address to p_paddr */
-			prog_hdrs[i].p_paddr = addr_rx;
-			prog_hdrs[i].p_vaddr = addr_rw;
+			segments[i].rx_addr = addr_rx;
+			segments[i].rw_addr = addr_rw;
 
-			if ((prog_hdrs[i].p_flags & PF_X) == PF_X) {
+			if ((segments[i].p_flags & PF_X) == PF_X) {
 				LOG("Code segment loaded at %p for RW, %p for RX",
 				    (void *)addr_rw, (void *)addr_rx);
 			} else {
 				LOG("Data segment loaded at %p ", (void *)addr_rw);
 			}
 
-			memcpy((void *)prog_hdrs[i].p_vaddr, (char *)data + prog_hdrs[i].p_offset, prog_hdrs[i].p_filesz);
-			memset((char *)prog_hdrs[i].p_vaddr + prog_hdrs[i].p_filesz, 0, prog_hdrs[i].p_memsz - prog_hdrs[i].p_filesz);
-		} else if (prog_hdrs[i].p_type == PT_SCE_RELA) {
+			memcpy((void *)segments[i].rw_addr, segments[i].src_data, segments[i].p_filesz);
+			memset((char *)segments[i].rw_addr + segments[i].p_filesz, 0, segments[i].p_memsz - segments[i].p_filesz);
+		} else if (segments[i].p_type == PT_SCE_RELA) {
 			LOG("Found relocations segment (%u)", i);
-			relocate((char *)data + prog_hdrs[i].p_offset, prog_hdrs[i].p_filesz, prog_hdrs);
+			relocate(segments[i].src_data, segments[i].p_filesz, segments);
 		} else {
 			LOG("Segment %u is not loadable. Skipping.", i);
 			continue;
@@ -265,7 +417,7 @@ int load_elf(Jit *jit, const void *data, void **entry)
 
 	/* Get module info */
 	LOG("Getting module info.");
-	if ((mod_info_idx = elf_get_sce_module_info(elf_hdr, prog_hdrs, &mod_info)) < 0) {
+	if ((mod_info_idx = elf_get_sce_module_info(e_entry, segments, &mod_info)) < 0) {
 		LOG("Cannot find module info section.");
 		goto err_free_data;
 	}
@@ -277,8 +429,8 @@ int load_elf(Jit *jit, const void *data, void **entry)
 	LOG("  tls memsz: 0x%lx", mod_info->tls_memsz);
 
 	/* Resolve NIDs */
-	sce_module_imports_u_t *import = (void *)(prog_hdrs[mod_info_idx].p_vaddr + mod_info->import_top);
-	void *end = (void *)(prog_hdrs[mod_info_idx].p_vaddr + mod_info->import_end);
+	sce_module_imports_u_t *import = (void *)(segments[mod_info_idx].rw_addr + mod_info->import_top);
+	void *end = (void *)(segments[mod_info_idx].rw_addr + mod_info->import_end);
 
 	for (; (void *)import < end; import = IMP_GET_NEXT(import)) {
 		imp_name = (void *)CODE_RX_TO_RW_ADDR(code_rx_addr, code_rw_addr, IMP_GET_NAME(import));
@@ -290,7 +442,7 @@ int load_elf(Jit *jit, const void *data, void **entry)
 	}
 
 	/* Find the entry point (address belonging to the RX JIT area) */
-	*entry = (char *)prog_hdrs[mod_info_idx].p_paddr + mod_info->module_start;
+	*entry = (char *)segments[mod_info_idx].rx_addr + mod_info->module_start;
 	if (*entry == NULL) {
 		LOG("Invalid module entry function.\n");
 		goto err_free_data;
@@ -312,7 +464,7 @@ err_jit_close:
 	return -1;
 }
 
-int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_imports_u_t *import)
+static int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_imports_u_t *import)
 {
 	uint32_t nid;
 	uint32_t *stub;
@@ -351,7 +503,7 @@ int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_imports_u_t
 	return 0;
 }
 
-int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs)
+static int relocate(const void *reloc, uint32_t size, segment_info_t *segs)
 {
 	SCE_Rel *entry;
 	uint32_t pos;
@@ -384,10 +536,9 @@ int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs)
 		// get values
 		r_symseg = SCE_REL_SYMSEG(*entry);
 		r_datseg = SCE_REL_DATSEG(*entry);
-		/* For the code segment, p_paddr contains the RX JIT area address */
-		symval = r_symseg == 15 ? 0 : (uint32_t)segs[r_symseg].p_paddr;
-		loc_rw = (uint32_t)segs[r_datseg].p_vaddr + r_offset;
-		loc_rx = (uint32_t)segs[r_datseg].p_paddr + r_offset;
+		symval = r_symseg == 15 ? 0 : (uint32_t)segs[r_symseg].rx_addr;
+		loc_rw = (uint32_t)segs[r_datseg].rw_addr + r_offset;
+		loc_rx = (uint32_t)segs[r_datseg].rx_addr + r_offset;
 
 		// perform relocation
 		// taken from linux/arch/arm/kernel/module.c of Linux Kernel 4.0
@@ -519,7 +670,7 @@ int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs)
 			continue;
 		}
 
-		memcpy((char *)segs[r_datseg].p_vaddr + r_offset, &value, sizeof(value));
+		memcpy((char *)segs[r_datseg].rw_addr + r_offset, &value, sizeof(value));
 	}
 
 	return 0;
