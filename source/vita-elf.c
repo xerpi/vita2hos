@@ -7,7 +7,10 @@
 #include "vita-elf.h"
 #include "utils.h"
 
-int resolve_imports(module_imports_t *import);
+#define CODE_RX_TO_RW_ADDR(rx_base, rw_base, rx_addr) \
+	((((uintptr_t)rx_addr - (uintptr_t)rx_base)) + (uintptr_t)rw_base)
+
+int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, module_imports_t *import);
 int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs);
 
 extern void sceKernelAllocMemBlock();
@@ -138,12 +141,13 @@ int load_elf(Jit *jit, const void *data, void **entry)
 {
 	const Elf32_Ehdr *elf_hdr = data;
 	Elf32_Phdr *prog_hdrs;
-	uint32_t length;
-	void *blockaddr = NULL;
 	uint32_t code_size = 0, data_size = 0;
-	char *data_addr, *code_rw_base, *code_rx_base;
-	char *code_rw_addr;
+	uint32_t code_offset = 0, data_offset = 0;
+	uintptr_t data_addr, code_rw_addr, code_rx_addr;
+	uintptr_t addr_rw, addr_rx;
+	uint32_t length;
 	module_info_t *mod_info;
+	const char *imp_name;
 	int mod_info_idx;
 	Result res;
 
@@ -166,7 +170,7 @@ int load_elf(Jit *jit, const void *data, void **entry)
 	/* Calculate total code and data sizes */
 	for (Elf32_Half i = 0; i < elf_hdr->e_phnum; i++) {
 		if (prog_hdrs[i].p_type == PT_LOAD) {
-			length = ALIGN(prog_hdrs[i].p_memsz, 0x100000);
+			length = prog_hdrs[i].p_memsz + prog_hdrs[i].p_align;
 			if ((prog_hdrs[i].p_flags & PF_X) == PF_X)
 				code_size += length;
 			else
@@ -174,8 +178,8 @@ int load_elf(Jit *jit, const void *data, void **entry)
 		}
 	}
 
-	LOG("Code size: 0x%lx", code_size);
-	LOG("Data size: 0x%lx", data_size);
+	LOG("Total needed code size: 0x%lx", code_size);
+	LOG("Total needed data size: 0x%lx", data_size);
 
 	res = jitCreate(jit, code_size);
 	if (R_FAILED(res)) {
@@ -183,18 +187,18 @@ int load_elf(Jit *jit, const void *data, void **entry)
 		return -1;
 	}
 
-	data_addr = malloc(data_size);
+	data_addr = (uintptr_t)malloc(data_size);
 	if (!data_addr) {
 		LOG("Could not allocate buffer for the data segment");
 		goto err_jit_close;
 	}
 
-	code_rw_base = jitGetRwAddr(jit);
-	code_rx_base = jitGetRxAddr(jit);
+	code_rw_addr = (uintptr_t)jitGetRwAddr(jit);
+	code_rx_addr = (uintptr_t)jitGetRxAddr(jit);
 
-	LOG("JIT code RW addr: %p", code_rw_base);
-	LOG("JIT code RX addr: %p", code_rx_base);
-	LOG("Data        addr: %p", data_addr);
+	LOG("JIT code RW addr: %p", (void *)code_rw_addr);
+	LOG("JIT code RX addr: %p", (void *)code_rx_addr);
+	LOG("Data        addr: %p", (void *)data_addr);
 
 	res = jitTransitionToWritable(jit);
 	if (R_FAILED(res)) {
@@ -202,27 +206,35 @@ int load_elf(Jit *jit, const void *data, void **entry)
 		goto err_free_data;
 	}
 
-	code_rw_addr = code_rw_base;
 	for (Elf32_Half i = 0; i < elf_hdr->e_phnum; i++) {
 		if (prog_hdrs[i].p_type == PT_LOAD) {
 			LOG("Found loadable segment (%u)", i);
-
-			length = ALIGN(prog_hdrs[i].p_memsz, 0x100000);
+			LOG("  p_offset: 0x%lx", prog_hdrs[i].p_offset);
+			LOG("  p_filesz: 0x%lx", prog_hdrs[i].p_filesz);
+			LOG("  p_memsz:  0x%lx", prog_hdrs[i].p_align);
+			LOG("  p_align:  0x%lx", prog_hdrs[i].p_align);
 
 			if ((prog_hdrs[i].p_flags & PF_X) == PF_X) {
-				blockaddr = code_rw_addr;
-				code_rw_addr += length;
+				length = ALIGN(code_rx_addr, prog_hdrs[i].p_align) - code_rx_addr;
+				addr_rx = code_rx_addr + code_offset;
+				addr_rw = code_rw_addr + code_offset;
+				code_offset += prog_hdrs[i].p_memsz;
 			} else {
-				blockaddr = data_addr;
-				data_addr += length;
+				length = ALIGN(data_addr, prog_hdrs[i].p_align) - data_addr;
+				addr_rw = addr_rx = data_addr + data_offset;
+				data_offset += prog_hdrs[i].p_memsz;
 			}
 
-			prog_hdrs[i].p_vaddr = (uintptr_t)blockaddr;
+			/* If it's a code segment, store the RX JIT area address to p_paddr */
+			prog_hdrs[i].p_paddr = addr_rx;
+			prog_hdrs[i].p_vaddr = addr_rw;
 
-			LOG("Allocated memory at %p, attempting to load segment %u:", blockaddr, i);
-			LOG("p_offset: 0x%lx", prog_hdrs[i].p_offset);
-			LOG("p_filesz: 0x%lx", prog_hdrs[i].p_filesz);
-			LOG("p_memsz: 0x%lx", prog_hdrs[i].p_memsz);
+			if ((prog_hdrs[i].p_flags & PF_X) == PF_X) {
+				LOG("Code segment loaded at %p for RW, %p for RX",
+				    (void *)addr_rw, (void *)addr_rx);
+			} else {
+				LOG("Data segment loaded at %p ", (void *)addr_rw);
+			}
 
 			memcpy((void *)prog_hdrs[i].p_vaddr, (char *)data + prog_hdrs[i].p_offset, prog_hdrs[i].p_filesz);
 			memset((char *)prog_hdrs[i].p_vaddr + prog_hdrs[i].p_filesz, 0, prog_hdrs[i].p_memsz - prog_hdrs[i].p_filesz);
@@ -249,15 +261,16 @@ int load_elf(Jit *jit, const void *data, void **entry)
 	void *end = (void *)(prog_hdrs[mod_info_idx].p_vaddr + mod_info->stub_end);
 
 	for (; (void *)import < end; import = IMP_GET_NEXT(import)) {
-		LOG("Resolving imports for %s", IMP_GET_NAME (import));
-		if (resolve_imports(import) < 0) {
-			LOG("Failed to resolve imports for %s", IMP_GET_NAME(import));
+		imp_name = (void *)CODE_RX_TO_RW_ADDR(code_rx_addr, code_rw_addr, IMP_GET_NAME(import));
+		LOG("Resolving imports for %s", imp_name);
+		if (resolve_imports(code_rx_addr, code_rw_addr, import) < 0) {
+			LOG("Failed to resolve imports for %s", imp_name);
 			goto err_free_data;
 		}
 	}
 
-	/* Find the entry point */
-	*entry = code_rx_base + ((char *)prog_hdrs[mod_info_idx].p_vaddr - code_rw_base) + mod_info->mod_start;
+	/* Find the entry point (address belonging to the RX JIT area) */
+	*entry = (char *)prog_hdrs[mod_info_idx].p_paddr + mod_info->mod_start;
 	if (*entry == NULL) {
 		LOG("Invalid module entry function.\n");
 		goto err_free_data;
@@ -272,47 +285,47 @@ int load_elf(Jit *jit, const void *data, void **entry)
 	return 0;
 
 err_free_data:
-	free(data_addr);
+	free((void *)data_addr);
 err_jit_close:
 	jitClose(jit);
 
 	return -1;
 }
 
-int resolve_imports(module_imports_t *import)
+int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, module_imports_t *import)
 {
 	uint32_t nid;
 	uint32_t *stub;
 
-	LOG("Resolving import table at %p", import);
+	/* The module imports struct contains pointers to entries to the RX JIT area because
+	 * it has already been relocated, so we have to convert them to RW addresses */
 
 	for (uint32_t i = 0; i < IMP_GET_FUNC_COUNT(import); i++) {
-		nid = IMP_GET_FUNC_TABLE(import)[i];
-		stub = IMP_GET_FUNC_ENTRIES(import)[i];
+		nid = ((uint32_t *)CODE_RX_TO_RW_ADDR(rx_base, rw_base, IMP_GET_FUNC_TABLE(import)))[i];
+		stub = (void *)CODE_RX_TO_RW_ADDR(rx_base, rw_base, IMP_GET_FUNC_ENTRIES(import)[i]);
 
-		IF_VERBOSE LOG("Trying to resolve function NID: 0x%08lX found in %s",
-			       nid, IMP_GET_NAME(import));
-		IF_VERBOSE LOG("Stub located at: %p", stub);
+		IF_VERBOSE LOG("  Trying to resolve function NID 0x%08lX", nid);
+		IF_VERBOSE LOG("    Stub located at: %p", stub);
 
 		uintptr_t export_addr = (uintptr_t)get_stub_func(nid);
 		if (export_addr) {
 			stub[0] = arm_encode_movw(12, (uint16_t)export_addr);
 			stub[1] = arm_encode_movt(12, (uint16_t)(export_addr >> 16));
 			stub[2] = arm_encode_bx(12);
-			LOG("NID resolved successfully!");
+			LOG("    NID resolved successfully!");
 		} else {
 			stub[0] = arm_encode_movw(0, (uint16_t)SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID);
 			stub[1] = arm_encode_movt(0, (uint16_t)(SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID >> 16));
 			stub[2] = arm_encode_ret();
-			LOG("Could not resolve NID, export not found!");
+			LOG("    Could not resolve NID, export not found!");
 		}
 	}
 
 	for (uint32_t i = 0; i < IMP_GET_VARS_COUNT(import); i++) {
-		IF_VERBOSE LOG("Trying to resolve variable NID: 0x%08lX found in %s",
-			       IMP_GET_VARS_TABLE(import)[i], IMP_GET_NAME(import));
+		nid = ((uint32_t *)CODE_RX_TO_RW_ADDR(rx_base, rw_base, IMP_GET_VARS_TABLE(import)))[i];
+		IF_VERBOSE LOG("  Trying to resolve variable NID 0x%08lX", nid);
 		/* TODO */
-		LOG("Variable NID resolving currently not implemented!");
+		LOG("    Variable NID resolving currently not implemented!");
 	}
 
 	return 0;
@@ -328,7 +341,7 @@ int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs)
 	uint8_t r_symseg;
 	uint8_t r_datseg;
 	int32_t offset;
-	uint32_t symval, loc;
+	uint32_t symval, loc_rw, loc_rx;
 	uint32_t upper, lower, sign, j1, j2;
 	uint32_t value = 0;
 
@@ -351,8 +364,10 @@ int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs)
 		// get values
 		r_symseg = SCE_RELOC_SYMSEG(*entry);
 		r_datseg = SCE_RELOC_DATSEG(*entry);
-		symval = r_symseg == 15 ? 0 : (uint32_t)segs[r_symseg].p_vaddr;
-		loc = (uint32_t)segs[r_datseg].p_vaddr + r_offset;
+		/* For the code segment, p_paddr contains the RX JIT area address */
+		symval = r_symseg == 15 ? 0 : (uint32_t)segs[r_symseg].p_paddr;
+		loc_rw = (uint32_t)segs[r_datseg].p_vaddr + r_offset;
+		loc_rx = (uint32_t)segs[r_datseg].p_paddr + r_offset;
 
 		// perform relocation
 		// taken from linux/arch/arm/kernel/module.c of Linux Kernel 4.0
@@ -362,7 +377,7 @@ int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs)
 			 * other bits to re-code instruction as
 			 * MOV PC,Rm.
 			 */
-			value = (*(uint32_t *)loc & 0xf000000f) | 0x01a0f000;
+			value = (*(uint32_t *)loc_rw & 0xf000000f) | 0x01a0f000;
 		}
 		break;
 		case R_ARM_ABS32:
@@ -372,12 +387,12 @@ int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs)
 		break;
 		case R_ARM_REL32:
 		case R_ARM_TARGET2: {
-			value = r_addend + symval - loc;
+			value = r_addend + symval - loc_rx;
 		}
 		break;
 		case R_ARM_THM_PC22: {
-			upper = *(uint16_t *)loc;
-			lower = *(uint16_t *)(loc + 2);
+			upper = *(uint16_t *)loc_rw;
+			lower = *(uint16_t *)(loc_rw + 2);
 
 			/*
 			 * 25 bit signed address range (Thumb-2 BL and B.W
@@ -395,7 +410,7 @@ int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs)
 			sign = (upper >> 10) & 1;
 			j1 = (lower >> 13) & 1;
 			j2 = (lower >> 11) & 1;
-			offset = r_addend + symval - loc;
+			offset = r_addend + symval - loc_rx;
 
 			if (offset <= (int32_t)0xff000000 ||
 			    offset >= (int32_t)0x01000000) {
@@ -417,7 +432,7 @@ int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs)
 		break;
 		case R_ARM_CALL:
 		case R_ARM_JUMP24: {
-			offset = r_addend + symval - loc;
+			offset = r_addend + symval - loc_rx;
 			if (offset <= (int32_t)0xfe000000 ||
 			    offset >= (int32_t)0x02000000) {
 				LOG("reloc %lx out of range: 0x%08lX", pos, symval);
@@ -427,11 +442,11 @@ int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs)
 			offset >>= 2;
 			offset &= 0x00ffffff;
 
-			value = (*(uint32_t *)loc & 0xff000000) | offset;
+			value = (*(uint32_t *)loc_rw & 0xff000000) | offset;
 		}
 		break;
 		case R_ARM_PREL31: {
-			offset = r_addend + symval - loc;
+			offset = r_addend + symval - loc_rx;
 			value = offset & 0x7fffffff;
 		}
 		break;
@@ -441,7 +456,7 @@ int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs)
 			if (SCE_RELOC_CODE(*entry) == R_ARM_MOVT_ABS)
 				offset >>= 16;
 
-			value = *(uint32_t *)loc;
+			value = *(uint32_t *)loc_rw;
 			value &= 0xfff0f000;
 			value |= ((offset & 0xf000) << 4) |
 				 (offset & 0x0fff);
@@ -449,8 +464,8 @@ int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs)
 		break;
 		case R_ARM_THM_MOVW_ABS_NC:
 		case R_ARM_THM_MOVT_ABS: {
-			upper = *(uint16_t *)loc;
-			lower = *(uint16_t *)(loc + 2);
+			upper = *(uint16_t *)loc_rw;
+			lower = *(uint16_t *)(loc_rw + 2);
 
 			/*
 			 * MOVT/MOVW instructions encoding in Thumb-2:
