@@ -75,7 +75,7 @@ int SceDisplay_init(void)
 {
 	Result res;
 
-	res = threadCreate(&g_vsync_thread, vsync_thread_func, NULL, NULL, 0x10000, 0x2C, -2);
+	res = threadCreate(&g_vsync_thread, vsync_thread_func, NULL, NULL, 0x10000, 0x3B, -2);
 	if (R_FAILED(res)) {
 		LOG("Error creating VSync thread: 0x%lx", res);
 		return res;

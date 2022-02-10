@@ -1,14 +1,18 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <psp2/kernel/threadmgr.h>
+#include "SceKernelThreadMgr.h"
 #include "utils.h"
 #include "log.h"
 
-#define KERNEL_TLS_SIZE 0x800
-
-static void *tls[1];
-
 void *sceKernelGetTLSAddr(int key)
 {
-	return &tls[0];
+	VitaThreadInfo *ti;
+
+	if (key >= 0 && key <= 0x100) {
+		ti = SceKernelThreadMgr_get_thread_info();
+		return ti->vita_tls[key];
+	}
+
+	return NULL;
 }

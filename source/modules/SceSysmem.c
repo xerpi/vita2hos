@@ -4,13 +4,18 @@
 #include "utils.h"
 #include "log.h"
 
-static SceUID uid = 1;
+static SceUID g_last_uid = 1;
 
 static struct {
 	bool valid;
 	SceUID uid;
 	void *base;
 } memblock_table[32];
+
+SceUID SceSysmem_get_next_uid(void)
+{
+	return g_last_uid++;
+}
 
 SceUID sceKernelAllocMemBlock(const char *name, SceKernelMemBlockType type, SceSize size, SceKernelAllocMemBlockOpt *opt)
 {
@@ -25,12 +30,11 @@ SceUID sceKernelAllocMemBlock(const char *name, SceKernelMemBlockType type, SceS
 
 	for (int i = 0; i < ARRAY_SIZE(memblock_table); i++) {
 		if (!memblock_table[i].valid) {
-			memblock_table[i].uid = uid++;
+			memblock_table[i].uid = SceSysmem_get_next_uid();
 			memblock_table[i].base = aligned_alloc(alignment, size);
 			memblock_table[i].valid = true;
 			return memblock_table[i].uid;
 		}
-
 	}
 
 	return -1;

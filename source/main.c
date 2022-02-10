@@ -4,11 +4,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <switch.h>
+#include "SceKernelThreadMgr.h"
+#include "SceCtrl.h"
+#include "SceDisplay.h"
 #include "log.h"
 #include "load.h"
-
-int SceDisplay_init(void);
-int SceCtrl_init(void);
 
 int main(int argc, char *argv[])
 {
@@ -29,6 +29,7 @@ int main(int argc, char *argv[])
 		consoleExit(NULL);
 
 		/* Init modules */
+		SceKernelThreadMgr_init();
 		SceCtrl_init();
 		SceDisplay_init();
 
