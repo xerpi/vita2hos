@@ -1,16 +1,28 @@
 #include <stdlib.h>
 #include <string.h>
+#include <elf.h>
 #include <switch.h>
 #include <psp2/kernel/error.h>
 #include "arm-encode.h"
+#include "load.h"
 #include "log.h"
-#include "vita-elf.h"
+#include "sce-elf.h"
 #include "utils.h"
+
+#define IMP_GET_NEXT(imp) ((sce_module_imports_u_t *)((char *)imp + imp->size))
+#define IMP_GET_FUNC_COUNT(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.num_syms_funcs : imp->imports.num_syms_funcs)
+#define IMP_GET_VARS_COUNT(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.num_syms_vars : imp->imports.num_syms_vars)
+#define IMP_GET_NID(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.module_nid : imp->imports.module_nid)
+#define IMP_GET_NAME(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.library_name : imp->imports.library_name)
+#define IMP_GET_FUNC_TABLE(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.func_nid_table : imp->imports.func_nid_table)
+#define IMP_GET_FUNC_ENTRIES(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.func_entry_table : imp->imports.func_entry_table)
+#define IMP_GET_VARS_TABLE(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.var_nid_table : imp->imports.var_nid_table)
+#define IMP_GET_VARS_ENTRIES(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.var_entry_table : imp->imports.var_entry_table)
 
 #define CODE_RX_TO_RW_ADDR(rx_base, rw_base, rx_addr) \
 	((((uintptr_t)rx_addr - (uintptr_t)rx_base)) + (uintptr_t)rw_base)
 
-int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, module_imports_t *import);
+int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_imports_u_t *import);
 int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs);
 
 extern void sceKernelAllocMemBlock();
@@ -18,6 +30,7 @@ extern void sceKernelGetMemBlockBase();
 extern void sceDisplaySetFrameBuf();
 extern void sceCtrlPeekBufferPositive();
 extern void sceKernelDelayThread();
+extern void sceKernelGetTLSAddr();
 
 static const struct {
 	uint32_t nid;
@@ -28,6 +41,7 @@ static const struct {
 	{0x7A410B64, sceDisplaySetFrameBuf},
 	{0xA9C3CED6, sceCtrlPeekBufferPositive},
 	{0x4B675D05, sceKernelDelayThread},
+	{0xB295EB61, sceKernelGetTLSAddr},
 };
 
 static inline const void *get_stub_func(uint32_t nid)
@@ -80,7 +94,7 @@ int elf_check_vita_header(const Elf32_Ehdr *hdr)
 	return 0;
 }
 
-static int elf_get_sce_module_info(const Elf32_Ehdr *elf_hdr, const Elf32_Phdr *elf_phdrs, module_info_t **mod_info)
+static int elf_get_sce_module_info(const Elf32_Ehdr *elf_hdr, const Elf32_Phdr *elf_phdrs, sce_module_info_raw **mod_info)
 {
 	uint32_t offset;
 	uint32_t index;
@@ -93,7 +107,7 @@ static int elf_get_sce_module_info(const Elf32_Ehdr *elf_hdr, const Elf32_Phdr *
 		return -1;
 	}
 
-	*mod_info = (module_info_t *)((char *)elf_phdrs[index].p_vaddr + offset);
+	*mod_info = (sce_module_info_raw *)((char *)elf_phdrs[index].p_vaddr + offset);
 
 	return index;
 }
@@ -124,7 +138,7 @@ int load_exe(Jit *jit, const char *filename, void **entry)
 	} else if (magic[0] == SCEMAG0) {
 		if (magic[1] == SCEMAG1 && magic[2] == SCEMAG2 && magic[3] == SCEMAG3) {
 			offset = ((uint32_t *)data)[4];
-			LOG("Loading FSELF. ELF offset at 0x%08lX", offset);
+			LOG("Loading FSELF. ELF offset at 0x%08lx", offset);
 			if (load_elf(jit, (void *)((uintptr_t)data + offset), entry) < 0) {
 				LOG("Cannot load FSELF.");
 				return -1;
@@ -148,7 +162,7 @@ int load_elf(Jit *jit, const void *data, void **entry)
 	uintptr_t data_addr, code_rw_addr, code_rx_addr;
 	uintptr_t addr_rw, addr_rx;
 	uint32_t length;
-	module_info_t *mod_info;
+	sce_module_info_raw *mod_info;
 	const char *imp_name;
 	int mod_info_idx;
 	Result res;
@@ -255,12 +269,16 @@ int load_elf(Jit *jit, const void *data, void **entry)
 		LOG("Cannot find module info section.");
 		goto err_free_data;
 	}
-	LOG("Module name: %s, export table offset: 0x%08lX, import table offset: 0x%08lX",
-	    mod_info->modname, mod_info->ent_top, mod_info->stub_top);
+	LOG("Module name: %s", mod_info->name);
+	LOG("  export table offset: 0x%lx", mod_info->export_top);
+	LOG("  import table offset: 0x%lx", mod_info->import_top);
+	LOG("  tls start: 0x%lx", mod_info->tls_start);
+	LOG("  tls filesz: 0x%lx", mod_info->tls_filesz);
+	LOG("  tls memsz: 0x%lx", mod_info->tls_memsz);
 
 	/* Resolve NIDs */
-	module_imports_t *import = (void *)(prog_hdrs[mod_info_idx].p_vaddr + mod_info->stub_top);
-	void *end = (void *)(prog_hdrs[mod_info_idx].p_vaddr + mod_info->stub_end);
+	sce_module_imports_u_t *import = (void *)(prog_hdrs[mod_info_idx].p_vaddr + mod_info->import_top);
+	void *end = (void *)(prog_hdrs[mod_info_idx].p_vaddr + mod_info->import_end);
 
 	for (; (void *)import < end; import = IMP_GET_NEXT(import)) {
 		imp_name = (void *)CODE_RX_TO_RW_ADDR(code_rx_addr, code_rw_addr, IMP_GET_NAME(import));
@@ -272,7 +290,7 @@ int load_elf(Jit *jit, const void *data, void **entry)
 	}
 
 	/* Find the entry point (address belonging to the RX JIT area) */
-	*entry = (char *)prog_hdrs[mod_info_idx].p_paddr + mod_info->mod_start;
+	*entry = (char *)prog_hdrs[mod_info_idx].p_paddr + mod_info->module_start;
 	if (*entry == NULL) {
 		LOG("Invalid module entry function.\n");
 		goto err_free_data;
@@ -294,7 +312,7 @@ err_jit_close:
 	return -1;
 }
 
-int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, module_imports_t *import)
+int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_imports_u_t *import)
 {
 	uint32_t nid;
 	uint32_t *stub;
@@ -306,7 +324,7 @@ int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, module_imports_t *impo
 		nid = ((uint32_t *)CODE_RX_TO_RW_ADDR(rx_base, rw_base, IMP_GET_FUNC_TABLE(import)))[i];
 		stub = (void *)CODE_RX_TO_RW_ADDR(rx_base, rw_base, IMP_GET_FUNC_ENTRIES(import)[i]);
 
-		IF_VERBOSE LOG("  Trying to resolve function NID 0x%08lX", nid);
+		IF_VERBOSE LOG("  Trying to resolve function NID 0x%08lx", nid);
 		IF_VERBOSE LOG("    Stub located at: %p", stub);
 
 		uintptr_t export_addr = (uintptr_t)get_stub_func(nid);
@@ -325,7 +343,7 @@ int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, module_imports_t *impo
 
 	for (uint32_t i = 0; i < IMP_GET_VARS_COUNT(import); i++) {
 		nid = ((uint32_t *)CODE_RX_TO_RW_ADDR(rx_base, rw_base, IMP_GET_VARS_TABLE(import)))[i];
-		IF_VERBOSE LOG("  Trying to resolve variable NID 0x%08lX", nid);
+		IF_VERBOSE LOG("  Trying to resolve variable NID 0x%08lx", nid);
 		/* TODO */
 		LOG("    Variable NID resolving currently not implemented!");
 	}
@@ -335,7 +353,7 @@ int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, module_imports_t *impo
 
 int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs)
 {
-	sce_reloc_t *entry;
+	SCE_Rel *entry;
 	uint32_t pos;
 	uint16_t r_code = 0;
 	uint32_t r_offset;
@@ -350,22 +368,22 @@ int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs)
 	pos = 0;
 	while (pos < size) {
 		// get entry
-		entry = (sce_reloc_t *)((char *)reloc + pos);
-		if (SCE_RELOC_IS_SHORT(*entry)) {
-			r_offset = SCE_RELOC_SHORT_OFFSET(entry->r_short);
-			r_addend = SCE_RELOC_SHORT_ADDEND(entry->r_short);
+		entry = (SCE_Rel *)((char *)reloc + pos);
+		if (SCE_REL_IS_SHORT(*entry)) {
+			r_offset = SCE_REL_SHORT_OFFSET(entry->r_short);
+			r_addend = SCE_REL_SHORT_ADDEND(entry->r_short);
 			pos += 8;
 		} else {
-			r_offset = SCE_RELOC_LONG_OFFSET(entry->r_long);
-			r_addend = SCE_RELOC_LONG_ADDEND(entry->r_long);
-			if (SCE_RELOC_LONG_CODE2(entry->r_long))
+			r_offset = SCE_REL_LONG_OFFSET(entry->r_long);
+			r_addend = SCE_REL_LONG_ADDEND(entry->r_long);
+			if (SCE_REL_LONG_CODE2(entry->r_long))
 				IF_VERBOSE LOG("Code2 ignored for relocation at %lx.", pos);
 			pos += 12;
 		}
 
 		// get values
-		r_symseg = SCE_RELOC_SYMSEG(*entry);
-		r_datseg = SCE_RELOC_DATSEG(*entry);
+		r_symseg = SCE_REL_SYMSEG(*entry);
+		r_datseg = SCE_REL_DATSEG(*entry);
 		/* For the code segment, p_paddr contains the RX JIT area address */
 		symval = r_symseg == 15 ? 0 : (uint32_t)segs[r_symseg].p_paddr;
 		loc_rw = (uint32_t)segs[r_datseg].p_vaddr + r_offset;
@@ -373,7 +391,7 @@ int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs)
 
 		// perform relocation
 		// taken from linux/arch/arm/kernel/module.c of Linux Kernel 4.0
-		switch (SCE_RELOC_CODE(*entry)) {
+		switch (SCE_REL_CODE(*entry)) {
 		case R_ARM_V4BX: {
 			/* Preserve Rm and the condition code. Alter
 			 * other bits to re-code instruction as
@@ -416,7 +434,7 @@ int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs)
 
 			if (offset <= (int32_t)0xff000000 ||
 			    offset >= (int32_t)0x01000000) {
-				LOG("reloc %lx out of range: 0x%08lX", pos, symval);
+				LOG("reloc %lx out of range: 0x%08lx", pos, symval);
 				break;
 			}
 
@@ -437,7 +455,7 @@ int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs)
 			offset = r_addend + symval - loc_rx;
 			if (offset <= (int32_t)0xfe000000 ||
 			    offset >= (int32_t)0x02000000) {
-				LOG("reloc %lx out of range: 0x%08lX", pos, symval);
+				LOG("reloc %lx out of range: 0x%08lx", pos, symval);
 				break;
 			}
 
@@ -455,7 +473,7 @@ int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs)
 		case R_ARM_MOVW_ABS_NC:
 		case R_ARM_MOVT_ABS: {
 			offset = symval + r_addend;
-			if (SCE_RELOC_CODE(*entry) == R_ARM_MOVT_ABS)
+			if (SCE_REL_CODE(*entry) == R_ARM_MOVT_ABS)
 				offset >>= 16;
 
 			value = *(uint32_t *)loc_rw;
@@ -481,7 +499,7 @@ int relocate(void *reloc, uint32_t size, Elf32_Phdr *segs)
 			 */
 			offset = r_addend + symval;
 
-			if (SCE_RELOC_CODE(*entry) == R_ARM_THM_MOVT_ABS)
+			if (SCE_REL_CODE(*entry) == R_ARM_THM_MOVT_ABS)
 				offset >>= 16;
 
 			upper = (uint16_t)((upper & 0xfbf0) |

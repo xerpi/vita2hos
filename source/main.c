@@ -5,7 +5,7 @@
 #include <string.h>
 #include <switch.h>
 #include "log.h"
-#include "vita-elf.h"
+#include "load.h"
 
 int SceDisplay_init(void);
 int SceCtrl_init(void);
