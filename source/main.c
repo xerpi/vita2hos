@@ -7,7 +7,8 @@
 #include "log.h"
 #include "vita-elf.h"
 
-void SceCtrl_init(void);
+int SceDisplay_init(void);
+int SceCtrl_init(void);
 
 int main(int argc, char *argv[])
 {
@@ -19,8 +20,6 @@ int main(int argc, char *argv[])
 
 	LOG("-- vita2hos --");
 
-	SceCtrl_init();
-
 	int ret = load_exe(&jit, "/test.elf", &entry);
 	if (ret == 0) {
 		LOG("Jumping to the entry point at %p...", entry);
@@ -28,6 +27,10 @@ int main(int argc, char *argv[])
 		consoleUpdate(NULL);
 		log_to_fb_console = false;
 		consoleExit(NULL);
+
+		/* Init modules */
+		SceCtrl_init();
+		SceDisplay_init();
 
 		/* Jump to the entrypoint! */
 		((void (*)(int arglen, const void *argp))entry)(0, NULL);

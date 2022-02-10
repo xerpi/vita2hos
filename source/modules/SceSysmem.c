@@ -16,8 +16,7 @@ SceUID sceKernelAllocMemBlock(const char *name, SceKernelMemBlockType type, SceS
 {
 	uint32_t alignment;
 
-	LOG("sceKernelAllocMemBlock called!");
-	LOG("  size: %x", size);
+	LOG("sceKernelAllocMemBlock: name: \"%s\", size: 0x%x", name, size);
 
 	if (type == SCE_KERNEL_MEMBLOCK_TYPE_USER_CDRAM_RW)
 		alignment = 256 * 1024;
@@ -39,7 +38,7 @@ SceUID sceKernelAllocMemBlock(const char *name, SceKernelMemBlockType type, SceS
 
 int sceKernelGetMemBlockBase(SceUID uid, void **base)
 {
-	LOG("sceKernelGetMemBlockBase called!");
+	LOG("sceKernelGetMemBlockBase: uid: 0x%x", uid);
 
 	for (int i = 0; i < ARRAY_SIZE(memblock_table); i++) {
 		if (memblock_table[i].valid && memblock_table[i].uid == uid) {

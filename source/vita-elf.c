@@ -17,6 +17,7 @@ extern void sceKernelAllocMemBlock();
 extern void sceKernelGetMemBlockBase();
 extern void sceDisplaySetFrameBuf();
 extern void sceCtrlPeekBufferPositive();
+extern void sceKernelDelayThread();
 
 static const struct {
 	uint32_t nid;
@@ -26,6 +27,7 @@ static const struct {
 	{0xB8EF5818, sceKernelGetMemBlockBase},
 	{0x7A410B64, sceDisplaySetFrameBuf},
 	{0xA9C3CED6, sceCtrlPeekBufferPositive},
+	{0x4B675D05, sceKernelDelayThread},
 };
 
 static inline const void *get_stub_func(uint32_t nid)

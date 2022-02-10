@@ -35,8 +35,10 @@ int sceCtrlPeekBufferPositive(int port, SceCtrlData *pad_data, int count)
 	return 0;
 }
 
-void SceCtrl_init()
+int SceCtrl_init(void)
 {
 	padConfigureInput(1, HidNpadStyleSet_NpadStandard);
 	padInitializeAny(&g_pad);
+
+	return 0;
 }
