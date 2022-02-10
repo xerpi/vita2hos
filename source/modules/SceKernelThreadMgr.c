@@ -27,6 +27,7 @@ static VitaThreadInfo *thread_info_alloc(void)
 int SceKernelThreadMgr_init(void)
 {
 	VitaThreadInfo *ti;
+	Result res;
 
 	g_vita_thread_info_slot_id = threadTlsAlloc(NULL);
 
@@ -35,6 +36,13 @@ int SceKernelThreadMgr_init(void)
 	ti->thid = SceSysmem_get_next_uid();
 	ti->vita_tls = malloc(KERNEL_TLS_SIZE);
 	threadTlsSet(g_vita_thread_info_slot_id, ti);
+
+	/* Set this thread's priority as "preemptive priority" */
+	res = svcSetThreadPriority(threadGetCurHandle(), 0x3B);
+	if (R_FAILED(res)) {
+		LOG("Failed to set main's thread priority as preemptive: 0x%lx", res);
+		return -1;
+	}
 
 	return 0;
 }
