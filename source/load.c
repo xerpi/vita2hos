@@ -44,10 +44,12 @@ static int relocate(const void *reloc, uint32_t size, segment_info_t *segs);
 
 extern void sceKernelAllocMemBlock();
 extern void sceKernelGetMemBlockBase();
-extern void sceDisplaySetFrameBuf();
-extern void sceCtrlPeekBufferPositive();
 extern void sceKernelDelayThread();
 extern void sceKernelGetTLSAddr();
+extern void sceDisplaySetFrameBuf();
+extern void sceCtrlPeekBufferPositive();
+extern void sceTouchGetPanelInfo();
+extern void sceTouchPeek();
 
 static const struct {
 	uint32_t nid;
@@ -55,10 +57,12 @@ static const struct {
 } stub_map[] = {
 	{0xB9D5EBDE, sceKernelAllocMemBlock},
 	{0xB8EF5818, sceKernelGetMemBlockBase},
-	{0x7A410B64, sceDisplaySetFrameBuf},
-	{0xA9C3CED6, sceCtrlPeekBufferPositive},
 	{0x4B675D05, sceKernelDelayThread},
 	{0xB295EB61, sceKernelGetTLSAddr},
+	{0x7A410B64, sceDisplaySetFrameBuf},
+	{0xA9C3CED6, sceCtrlPeekBufferPositive},
+	{0x10A2CA25, sceTouchGetPanelInfo},
+	{0xFF082DF0, sceTouchPeek},
 };
 
 static inline const void *get_stub_func(uint32_t nid)

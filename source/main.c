@@ -7,6 +7,7 @@
 #include "SceKernelThreadMgr.h"
 #include "SceCtrl.h"
 #include "SceDisplay.h"
+#include "SceTouch.h"
 #include "log.h"
 #include "load.h"
 
@@ -18,10 +19,13 @@ static int launch(const void *entry)
 	ret = SceKernelThreadMgr_init();
 	if (ret != 0)
 		return ret;
+	ret = SceDisplay_init();
+	if (ret != 0)
+		return ret;
 	ret = SceCtrl_init();
 	if (ret != 0)
 		return ret;
-	ret = SceDisplay_init();
+	ret = SceTouch_init();
 	if (ret != 0)
 		return ret;
 

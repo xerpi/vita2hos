@@ -1,8 +1,6 @@
 #include <stdbool.h>
 #include <stdlib.h>
-
 #include <switch.h>
-
 #include <psp2/display.h>
 #include "utils.h"
 #include "log.h"
