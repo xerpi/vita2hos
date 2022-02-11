@@ -4,7 +4,6 @@
 #include <psp2common/types.h>
 
 typedef struct {
-	bool valid;
 	SceUID thid;
 	void **vita_tls;
 } VitaThreadInfo;

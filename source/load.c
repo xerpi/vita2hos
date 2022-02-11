@@ -46,6 +46,7 @@ extern void sceKernelAllocMemBlock();
 extern void sceKernelGetMemBlockBase();
 extern void sceKernelDelayThread();
 extern void sceKernelGetTLSAddr();
+extern void sceKernelExitProcess();
 extern void sceDisplaySetFrameBuf();
 extern void sceCtrlPeekBufferPositive();
 extern void sceTouchGetPanelInfo();
@@ -59,6 +60,7 @@ static const struct {
 	{0xB8EF5818, sceKernelGetMemBlockBase},
 	{0x4B675D05, sceKernelDelayThread},
 	{0xB295EB61, sceKernelGetTLSAddr},
+	{0x7595D9AA, sceKernelExitProcess},
 	{0x7A410B64, sceDisplaySetFrameBuf},
 	{0xA9C3CED6, sceCtrlPeekBufferPositive},
 	{0x10A2CA25, sceTouchGetPanelInfo},
@@ -226,28 +228,30 @@ static int load_self(Jit *jit, const void *data, void **entry)
 		segments[i].p_flags = seg_header->p_flags;
 		segments[i].p_align = seg_header->p_align;
 
-		if ((seg_header->p_type == PT_LOAD) && (seg_header->p_memsz != 0)) {
-			if (seg_infos[i].compression == 2) {
-				dest_bytes = seg_header->p_filesz;
-				uncompressed = malloc(seg_header->p_memsz);
-				if (!uncompressed) {
-					ret = -1;
-					goto done;
+		if (seg_header->p_type == PT_LOAD) {
+			if (seg_header->p_memsz != 0) {
+				if (seg_infos[i].compression == 2) {
+					dest_bytes = seg_header->p_filesz;
+					uncompressed = malloc(seg_header->p_memsz);
+					if (!uncompressed) {
+						ret = -1;
+						goto done;
+					}
+
+					ret = mz_uncompress(uncompressed, &dest_bytes,
+							    (uint8_t *)data + seg_infos[i].offset,
+							    seg_infos[i].length);
+					if (ret != MZ_OK) {
+						ret = -1;
+						goto done;
+					}
+
+					segments[i].src_data = uncompressed;
+					segments[i].needs_free = true;
+				} else {
+					segments[i].src_data = seg_bytes;
+
 				}
-
-				ret = mz_uncompress(uncompressed, &dest_bytes,
-						    (uint8_t *)data + seg_infos[i].offset,
-						    seg_infos[i].length);
-				if (ret != MZ_OK) {
-					ret = -1;
-					goto done;
-				}
-
-				segments[i].src_data = uncompressed;
-				segments[i].needs_free = true;
-			} else {
-				segments[i].src_data = seg_bytes;
-
 			}
 		} else if (seg_header->p_type == PT_LOOS) {
 			if (seg_infos[i].compression == 2) {
