@@ -7,6 +7,16 @@
 #include "utils.h"
 #include "log.h"
 
+static UEvent *g_process_exit_event_ptr;
+static int *g_process_exit_res_ptr;
+
+int SceLibKernel_init(UEvent *process_exit_event_ptr, int *process_exit_res_ptr)
+{
+	g_process_exit_event_ptr = process_exit_event_ptr;
+	g_process_exit_res_ptr = process_exit_res_ptr;
+	return 0;
+}
+
 void *sceKernelGetTLSAddr(int key)
 {
 	VitaThreadInfo *ti;
@@ -23,7 +33,10 @@ int sceKernelExitProcess(int res)
 {
 	LOG("sceKernelExitProcess called! Return value %d", res);
 
-	svcExitProcess();
+	*g_process_exit_res_ptr = res;
+	ueventSignal(g_process_exit_event_ptr);
+
+	threadExit();
 
 	return 0;
 }

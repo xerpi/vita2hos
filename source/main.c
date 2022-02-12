@@ -6,6 +6,7 @@
 #include <switch.h>
 #include <psp2/kernel/threadmgr.h>
 #include "SceKernelThreadMgr.h"
+#include "SceLibKernel.h"
 #include "SceCtrl.h"
 #include "SceDisplay.h"
 #include "SceTouch.h"
@@ -16,15 +17,11 @@
 #define SCE_KERNEL_STACK_SIZE_USER_DEFAULT	(4 * 1024)
 
 typedef struct {
-	struct {
-		SceKernelThreadEntry entry;
-		int args;
-		void *argp;
-	} in;
-
-	struct {
-		int ret;
-	} out;
+	UEvent *process_exit_event_ptr;
+	int *process_exit_res_ptr;
+	SceKernelThreadEntry entry;
+	int args;
+	void *argp;
 } main_thread_trampoline_data_t;
 
 static void NORETURN main_thread_trampoline(void *arg)
@@ -33,34 +30,45 @@ static void NORETURN main_thread_trampoline(void *arg)
 	int ret;
 
 	/* Init modules */
+	ret = SceLibKernel_init(data->process_exit_event_ptr,
+				data->process_exit_res_ptr);
+	if (ret != 0)
+		goto done;
 	ret = SceKernelThreadMgr_init();
 	if (ret != 0)
-		goto thread_exit;
+		goto done;
 	ret = SceDisplay_init();
 	if (ret != 0)
-		goto thread_exit;
+		goto done;
 	ret = SceCtrl_init();
 	if (ret != 0)
-		goto thread_exit;
+		goto done;
 	ret = SceTouch_init();
 	if (ret != 0)
-		goto thread_exit;
+		goto done;
 
-	data->out.ret = data->in.entry(data->in.args, data->in.argp);
+	data->entry(data->args, data->argp);
 
-thread_exit:
+done:
 	threadExit();
 }
 
 static int launch(const void *entry)
 {
 	main_thread_trampoline_data_t data;
+	UEvent process_exit_event;
+	int process_exit_res;
 	Thread main_thread;
 	Result res;
+	int ret;
 
-	data.in.entry = (SceKernelThreadEntry)entry;
-	data.in.args = 0;
-	data.in.argp = NULL;
+	ueventCreate(&process_exit_event, false);
+
+	data.process_exit_event_ptr = &process_exit_event;
+	data.process_exit_res_ptr = &process_exit_res;
+	data.entry = (SceKernelThreadEntry)entry;
+	data.args = 0;
+	data.argp = NULL;
 
 	res = threadCreate(&main_thread, main_thread_trampoline, &data, NULL,
 			   SCE_KERNEL_STACK_SIZE_USER_MAIN, 0x3B, -2);
@@ -75,14 +83,27 @@ static int launch(const void *entry)
 		return res;
 	}
 
-	LOG("Main thread started! Waiting for it to finish...");
+	LOG("Main thread started!");
+	LOG("Waiting for process termination...");
 
+	res = waitSingle(waiterForUEvent(&process_exit_event), -1);
+	if (R_FAILED(res)) {
+		LOG("Error to wait for : 0x%lx", res);
+		ret = -1;
+		goto done;
+	}
+
+	// TODO: Also wait for the rest of the threads to finish?
 	threadWaitForExit(&main_thread);
+
+	LOG("Process finished! Returned: %d", process_exit_res);
+
+	ret = process_exit_res;
+
+done:
 	threadClose(&main_thread);
 
-	LOG("Main thread finished! Returned: %d", data.out.ret);
-
-	return data.out.ret;
+	return ret;
 }
 
 int main(int argc, char *argv[])
@@ -103,17 +124,20 @@ int main(int argc, char *argv[])
 		log_to_fb_console = false;
 		consoleExit(NULL);
 
+		LOG("Launching PSVita executable!");
+
 		/* Jump to Vita's ELF entrypoint */
 		ret = launch(entry);
-
-		/* Close the JIT */
-		jitClose(&jit);
 
 		/* Open FB console */
 		consoleInit(NULL);
 		log_to_fb_console = true;
 
-		LOG("Returned! Return value: 0x%x", ret);
+		LOG("Returned from launch with result: %d", ret);
+
+		/* Close the JIT */
+		ret = jitClose(&jit);
+		LOG("jitClose() returned: 0x%x", ret);
 	} else {
 		LOG("Error loading ELF");
 	}
