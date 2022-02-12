@@ -13,25 +13,17 @@
 #include "log.h"
 #include "load.h"
 
-#define SCE_KERNEL_STACK_SIZE_USER_MAIN		(256 * 1024)
-#define SCE_KERNEL_STACK_SIZE_USER_DEFAULT	(4 * 1024)
-
-typedef struct {
-	UEvent *process_exit_event_ptr;
-	int *process_exit_res_ptr;
-	SceKernelThreadEntry entry;
-	int args;
-	void *argp;
-} main_thread_trampoline_data_t;
-
-static void NORETURN main_thread_trampoline(void *arg)
+static int launch(SceKernelThreadEntry *entry)
 {
-	main_thread_trampoline_data_t *data = arg;
+	UEvent process_exit_event;
+	int process_exit_res;
+	Result res;
 	int ret;
 
+	ueventCreate(&process_exit_event, false);
+
 	/* Init modules */
-	ret = SceLibKernel_init(data->process_exit_event_ptr,
-				data->process_exit_res_ptr);
+	ret = SceLibKernel_init(&process_exit_event, &process_exit_res);
 	if (ret != 0)
 		goto done;
 	ret = SceKernelThreadMgr_init();
@@ -47,43 +39,10 @@ static void NORETURN main_thread_trampoline(void *arg)
 	if (ret != 0)
 		goto done;
 
-	data->entry(data->args, data->argp);
+	LOG("Entering SceKernelThreadMgr...");
 
-done:
-	threadExit();
-}
+	ret = SceKernelThreadMgr_main_entry(entry, 0, NULL);
 
-static int launch(const void *entry)
-{
-	main_thread_trampoline_data_t data;
-	UEvent process_exit_event;
-	int process_exit_res;
-	Thread main_thread;
-	Result res;
-	int ret;
-
-	ueventCreate(&process_exit_event, false);
-
-	data.process_exit_event_ptr = &process_exit_event;
-	data.process_exit_res_ptr = &process_exit_res;
-	data.entry = (SceKernelThreadEntry)entry;
-	data.args = 0;
-	data.argp = NULL;
-
-	res = threadCreate(&main_thread, main_thread_trampoline, &data, NULL,
-			   SCE_KERNEL_STACK_SIZE_USER_MAIN, 0x3B, -2);
-	if (R_FAILED(res)) {
-		LOG("Error creating Main thread: 0x%lx", res);
-		return res;
-	}
-
-	res = threadStart(&main_thread);
-	if (R_FAILED(res)) {
-		LOG("Error starting Main thread: 0x%lx", res);
-		return res;
-	}
-
-	LOG("Main thread started!");
 	LOG("Waiting for process termination...");
 
 	res = waitSingle(waiterForUEvent(&process_exit_event), -1);
@@ -93,15 +52,11 @@ static int launch(const void *entry)
 		goto done;
 	}
 
-	// TODO: Also wait for the rest of the threads to finish?
-	threadWaitForExit(&main_thread);
-
 	LOG("Process finished! Returned: %d", process_exit_res);
 
 	ret = process_exit_res;
 
 done:
-	threadClose(&main_thread);
 
 	return ret;
 }

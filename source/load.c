@@ -44,6 +44,12 @@ static int relocate(const void *reloc, uint32_t size, segment_info_t *segs);
 
 extern void sceKernelAllocMemBlock();
 extern void sceKernelGetMemBlockBase();
+extern void sceKernelCreateThread();
+extern void sceKernelDeleteThread();
+extern void sceKernelStartThread();
+extern void sceKernelExitThread();
+extern void sceKernelExitDeleteThread();
+extern void sceKernelWaitThreadEnd();
 extern void sceKernelDelayThread();
 extern void sceKernelGetTLSAddr();
 extern void sceKernelExitProcess();
@@ -58,6 +64,12 @@ static const struct {
 } stub_map[] = {
 	{0xB9D5EBDE, sceKernelAllocMemBlock},
 	{0xB8EF5818, sceKernelGetMemBlockBase},
+	{0xC5C11EE7, sceKernelCreateThread},
+	{0x1BBDE3D9, sceKernelDeleteThread},
+	{0xF08DE149, sceKernelStartThread},
+	{0x0C8A38E1, sceKernelExitThread},
+	{0x1D17DECF, sceKernelExitDeleteThread},
+	{0xDDB395A9, sceKernelWaitThreadEnd},
 	{0x4B675D05, sceKernelDelayThread},
 	{0xB295EB61, sceKernelGetTLSAddr},
 	{0x7595D9AA, sceKernelExitProcess},
