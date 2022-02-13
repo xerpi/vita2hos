@@ -57,6 +57,9 @@ extern void sceKernelCreateLwMutex();
 extern void sceKernelDeleteLwMutex();
 extern void sceKernelLockLwMutex();
 extern void sceKernelUnlockLwMutex();
+extern void sceIoOpen();
+extern void sceIoClose();
+extern void sceIoRead();
 extern void sceIoDopen();
 extern void sceIoDread();
 extern void sceIoDclose();
@@ -84,6 +87,9 @@ static const struct {
 	{0x244E76D2, sceKernelDeleteLwMutex},
 	{0x46E7BE7B, sceKernelLockLwMutex},
 	{0x91FA6614, sceKernelUnlockLwMutex},
+	{0x6C60AC61, sceIoOpen},
+	{0xF5C6F098, sceIoClose},
+	{0xFDB32293, sceIoRead},
 	{0xA9283DD0, sceIoDopen},
 	{0x9C8B6624, sceIoDread},
 	{0x422A221A, sceIoDclose},
