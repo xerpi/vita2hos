@@ -5,6 +5,7 @@
 #include <psp2/kernel/threadmgr.h>
 #include "SceKernelThreadMgr.h"
 #include "SceSysmem.h"
+#include "bitset.h"
 #include "utils.h"
 #include "log.h"
 
@@ -14,28 +15,26 @@
 #define MAX_THREADS	32
 #define KERNEL_TLS_SIZE 0x800
 
+static BITSET_DEFINE(g_vita_thread_infos_valid, MAX_THREADS);
 static VitaThreadInfo g_vita_thread_infos[MAX_THREADS];
-static bool g_vita_thread_infos_valid[MAX_THREADS];
 static s32 g_vita_thread_info_tls_slot_id;
 
 static VitaThreadInfo *thread_info_alloc(void)
 {
-	for (int i = 0; i < ARRAY_SIZE(g_vita_thread_infos); i++) {
-		if (!g_vita_thread_infos_valid[i]) {
-			g_vita_thread_infos_valid[i] = true;
-			return &g_vita_thread_infos[i];
-		}
-	}
+	uint32_t index = bitset_find_first_clear_and_set(g_vita_thread_infos_valid);
+	if (index == UINT32_MAX)
+		return NULL;
 
-	return NULL;
+	g_vita_thread_infos[index].index = index;
+
+	return &g_vita_thread_infos[index];
 }
 
 static VitaThreadInfo *get_thread_info_for_uid(SceUID thid)
 {
-	for (int i = 0; i < ARRAY_SIZE(g_vita_thread_infos); i++) {
-		if (g_vita_thread_infos_valid[i] && g_vita_thread_infos[i].thid == thid) {
-			return &g_vita_thread_infos[i];
-		}
+	bitset_for_each_bit_set(g_vita_thread_infos_valid, index) {
+		if (g_vita_thread_infos[index].thid == thid)
+			return &g_vita_thread_infos[index];
 	}
 
 	return NULL;
@@ -80,7 +79,7 @@ static SceUID create_thread(const char *name, SceKernelThreadEntry entry, SceSiz
 
 	memset(ti, 0, sizeof(*ti));
 	ti->thid = SceSysmem_get_next_uid();
-	strncpy(ti->name, name, sizeof(ti->name));
+	strncpy(ti->name, name, sizeof(ti->name) - 1);
 	ti->entry = entry;
 	ti->vita_tls = malloc(KERNEL_TLS_SIZE);
 
@@ -138,7 +137,7 @@ int sceKernelDeleteThread(SceUID thid)
 	}
 
 	free(ti->vita_tls);
-	// put(ti)
+	BITSET_CLEAR(g_vita_thread_infos_valid, ti->index);
 
 	return 0;
 }

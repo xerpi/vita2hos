@@ -4,6 +4,7 @@
 #include <psp2/kernel/threadmgr.h>
 
 typedef struct {
+	uint32_t index;
 	Thread thread;
 	SceUID thid;
 	char name[32];

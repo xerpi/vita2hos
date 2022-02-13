@@ -12,12 +12,14 @@
 #include "SceLibKernel.h"
 #include "SceKernelThreadMgr.h"
 #include "SceSysmem.h"
+#include "bitset.h"
 #include "utils.h"
 #include "log.h"
 
 #define MAX_OPENED_DIRS 32
 
 typedef struct {
+	uint32_t index;
 	SceUID fd;
 	DIR *dir;
 	char *path;
@@ -26,27 +28,25 @@ typedef struct {
 static UEvent *g_process_exit_event_ptr;
 static int *g_process_exit_res_ptr;
 
+static BITSET_DEFINE(g_vita_opened_dirs_valid, MAX_OPENED_DIRS);
 static VitaOpenedDir g_vita_opened_dirs[MAX_OPENED_DIRS];
-static bool g_vita_opened_dirs_valid[MAX_OPENED_DIRS];
 
 static VitaOpenedDir *opened_dir_alloc(void)
 {
-	for (int i = 0; i < ARRAY_SIZE(g_vita_opened_dirs); i++) {
-		if (!g_vita_opened_dirs_valid[i]) {
-			g_vita_opened_dirs_valid[i] = true;
-			return &g_vita_opened_dirs[i];
-		}
-	}
+	uint32_t index = bitset_find_first_clear_and_set(g_vita_opened_dirs_valid);
+	if (index == UINT32_MAX)
+		return NULL;
 
-	return NULL;
+	g_vita_opened_dirs[index].index = index;
+
+	return &g_vita_opened_dirs[index];
 }
 
 static VitaOpenedDir *get_opened_dir_for_fd(SceUID fd)
 {
-	for (int i = 0; i < ARRAY_SIZE(g_vita_opened_dirs); i++) {
-		if (g_vita_opened_dirs_valid[i] && g_vita_opened_dirs[i].fd == fd) {
-			return &g_vita_opened_dirs[i];
-		}
+	bitset_for_each_bit_set(g_vita_opened_dirs_valid, index) {
+		if (g_vita_opened_dirs[index].fd == fd)
+			return &g_vita_opened_dirs[index];
 	}
 
 	return NULL;
@@ -198,12 +198,17 @@ int sceIoDread(SceUID fd, SceIoDirent *dirent)
 int sceIoDclose(SceUID fd)
 {
 	VitaOpenedDir *vdir = get_opened_dir_for_fd(fd);
+	DIR *dir;
 
-	if (!vdir || !closedir(vdir->dir))
+	if (!vdir)
 		return SCE_ERROR_ERRNO_EBADF;
 
+	dir = vdir->dir;
 	free(vdir->path);
-	//put(vdir);
+	BITSET_CLEAR(g_vita_opened_dirs_valid, vdir->index);
+
+	if (closedir(dir))
+		return SCE_ERROR_ERRNO_EBADF;
 
 	return 0;
 }
