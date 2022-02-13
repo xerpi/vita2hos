@@ -13,7 +13,7 @@
 #include "log.h"
 #include "load.h"
 
-static int launch(SceKernelThreadEntry *entry)
+static int launch(SceKernelThreadEntry entry)
 {
 	UEvent process_exit_event;
 	int process_exit_res;

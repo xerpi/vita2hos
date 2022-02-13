@@ -21,6 +21,8 @@ SceUID sceKernelAllocMemBlock(const char *name, SceKernelMemBlockType type, SceS
 {
 	uint32_t alignment;
 
+	LOG("sceKernelAllocMemBlock: name: %s, size: 0x%x", name, size);
+
 	if (type == SCE_KERNEL_MEMBLOCK_TYPE_USER_CDRAM_RW)
 		alignment = 256 * 1024;
 	else

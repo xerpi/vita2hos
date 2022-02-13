@@ -137,6 +137,9 @@ int sceKernelDeleteThread(SceUID thid)
 		return SCE_KERNEL_ERROR_THREAD_ERROR;
 	}
 
+	free(ti->vita_tls);
+	// put(ti)
+
 	return 0;
 }
 

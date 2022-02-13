@@ -1,7 +1,7 @@
 #ifndef SCE_KERNEL_THREAD_MGR_H
 #define SCE_KERNEL_THREAD_MGR_H
 
-#include <psp2common/types.h>
+#include <psp2/kernel/threadmgr.h>
 
 typedef struct {
 	Thread thread;

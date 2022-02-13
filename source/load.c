@@ -53,6 +53,13 @@ extern void sceKernelWaitThreadEnd();
 extern void sceKernelDelayThread();
 extern void sceKernelGetTLSAddr();
 extern void sceKernelExitProcess();
+extern void sceKernelCreateLwMutex();
+extern void sceKernelDeleteLwMutex();
+extern void sceKernelLockLwMutex();
+extern void sceKernelUnlockLwMutex();
+extern void sceIoDopen();
+extern void sceIoDread();
+extern void sceIoDclose();
 extern void sceDisplaySetFrameBuf();
 extern void sceCtrlPeekBufferPositive();
 extern void sceTouchGetPanelInfo();
@@ -73,6 +80,13 @@ static const struct {
 	{0x4B675D05, sceKernelDelayThread},
 	{0xB295EB61, sceKernelGetTLSAddr},
 	{0x7595D9AA, sceKernelExitProcess},
+ 	{0xDA6EC8EF, sceKernelCreateLwMutex},
+	{0x244E76D2, sceKernelDeleteLwMutex},
+	{0x46E7BE7B, sceKernelLockLwMutex},
+	{0x91FA6614, sceKernelUnlockLwMutex},
+	{0xA9283DD0, sceIoDopen},
+	{0x9C8B6624, sceIoDread},
+	{0x422A221A, sceIoDclose},
 	{0x7A410B64, sceDisplaySetFrameBuf},
 	{0xA9C3CED6, sceCtrlPeekBufferPositive},
 	{0x10A2CA25, sceTouchGetPanelInfo},
