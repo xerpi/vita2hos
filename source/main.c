@@ -10,6 +10,7 @@
 #include "SceLibKernel.h"
 #include "SceCtrl.h"
 #include "SceDisplay.h"
+#include "SceGxm.h"
 #include "SceTouch.h"
 #include "module.h"
 #include "log.h"
@@ -21,6 +22,7 @@ static void register_modules(void)
 	SceLibKernel_register();
 	SceKernelThreadMgr_register();
 	SceDisplay_register();
+	SceGxm_register();
 	SceCtrl_register();
 	SceTouch_register();
 }
@@ -40,6 +42,9 @@ static int launch(SceKernelThreadEntry entry)
 	if (ret != 0)
 		goto done;
 	ret = SceDisplay_init();
+	if (ret != 0)
+		goto done;
+	ret = SceGxm_init();
 	if (ret != 0)
 		goto done;
 	ret = SceCtrl_init();

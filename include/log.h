@@ -2,6 +2,7 @@
 #define LOG_H
 
 #include <stdio.h>
+#include <stdbool.h>
 
 #define DEBUG
 #define VERBOSE_LOGGING
