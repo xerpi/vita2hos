@@ -4,6 +4,7 @@
 #include <psp2/kernel/error.h>
 #include <psp2/kernel/threadmgr.h>
 #include "SceKernelThreadMgr.h"
+#include "SceLibKernel.h"
 #include "SceSysmem.h"
 #include "bitset.h"
 #include "utils.h"
@@ -16,12 +17,19 @@
 #define KERNEL_TLS_SIZE 0x800
 
 static BITSET_DEFINE(g_vita_thread_infos_valid, MAX_THREADS);
+static Mutex g_vita_thread_infos_mutex;
 static VitaThreadInfo g_vita_thread_infos[MAX_THREADS];
+
 static s32 g_vita_thread_info_tls_slot_id;
 
 static VitaThreadInfo *thread_info_alloc(void)
 {
-	uint32_t index = bitset_find_first_clear_and_set(g_vita_thread_infos_valid);
+	uint32_t index;
+
+	mutexLock(&g_vita_thread_infos_mutex);
+	index = bitset_find_first_clear_and_set(g_vita_thread_infos_valid);
+	mutexUnlock(&g_vita_thread_infos_mutex);
+
 	if (index == UINT32_MAX)
 		return NULL;
 
@@ -30,19 +38,36 @@ static VitaThreadInfo *thread_info_alloc(void)
 	return &g_vita_thread_infos[index];
 }
 
+static void thread_info_release(VitaThreadInfo *thread)
+{
+	mutexLock(&g_vita_thread_infos_mutex);
+	BITSET_CLEAR(g_vita_thread_infos_valid, thread->index);
+	mutexUnlock(&g_vita_thread_infos_mutex);
+}
+
 static VitaThreadInfo *get_thread_info_for_uid(SceUID thid)
 {
+	mutexLock(&g_vita_thread_infos_mutex);
 	bitset_for_each_bit_set(g_vita_thread_infos_valid, index) {
-		if (g_vita_thread_infos[index].thid == thid)
+		if (g_vita_thread_infos[index].thid == thid) {
+			mutexUnlock(&g_vita_thread_infos_mutex);
 			return &g_vita_thread_infos[index];
+		}
 	}
-
+	mutexUnlock(&g_vita_thread_infos_mutex);
 	return NULL;
 }
 
 int SceKernelThreadMgr_init(void)
 {
 	g_vita_thread_info_tls_slot_id = threadTlsAlloc(NULL);
+
+	return 0;
+}
+
+int SceKernelThreadMgr_finish(void)
+{
+	threadTlsFree(g_vita_thread_info_tls_slot_id);
 
 	return 0;
 }
@@ -137,7 +162,7 @@ int sceKernelDeleteThread(SceUID thid)
 	}
 
 	free(ti->vita_tls);
-	BITSET_CLEAR(g_vita_thread_infos_valid, ti->index);
+	thread_info_release(ti);
 
 	return 0;
 }
@@ -190,7 +215,9 @@ int sceKernelWaitThreadEnd(SceUID thid, int *stat, SceUInt *timeout)
 int SceKernelThreadMgr_main_entry(SceKernelThreadEntry entry, int args, void *argp)
 {
 	SceUID thid;
+	UEvent *process_exit_event;
 	int ret;
+	Result res;
 
 	thid = create_thread("<main>", entry, SCE_KERNEL_STACK_SIZE_USER_MAIN);
 	if (thid < 0)
@@ -200,6 +227,14 @@ int SceKernelThreadMgr_main_entry(SceKernelThreadEntry entry, int args, void *ar
 	if (ret < 0) {
 		sceKernelDeleteThread(thid);
 		return SCE_KERNEL_ERROR_THREAD_ERROR;
+	}
+
+	process_exit_event = SceLibKernel_get_process_exit_uevent();
+
+	res = waitSingle(waiterForUEvent(process_exit_event), -1);
+	if (R_FAILED(res)) {
+		LOG("Error waiting for the process to finish: 0x%lx", res);
+		return -1;
 	}
 
 	// TODO: Also wait for all threads to finish?

@@ -43,6 +43,7 @@ static int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_impo
 static int relocate(const void *reloc, uint32_t size, segment_info_t *segs);
 
 extern void sceKernelAllocMemBlock();
+extern void sceKernelFreeMemBlock();
 extern void sceKernelGetMemBlockBase();
 extern void sceKernelCreateThread();
 extern void sceKernelDeleteThread();
@@ -73,6 +74,7 @@ static const struct {
 	void *func;
 } stub_map[] = {
 	{0xB9D5EBDE, sceKernelAllocMemBlock},
+	{0xA91E15EE, sceKernelFreeMemBlock},
 	{0xB8EF5818, sceKernelGetMemBlockBase},
 	{0xC5C11EE7, sceKernelCreateThread},
 	{0x1BBDE3D9, sceKernelDeleteThread},

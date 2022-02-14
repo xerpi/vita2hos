@@ -1,3 +1,4 @@
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -33,18 +34,25 @@ typedef struct {
 	char *path;
 } VitaOpenedDir;
 
-static UEvent *g_process_exit_event_ptr;
-static int *g_process_exit_res_ptr;
+static UEvent g_process_exit_event;
+static atomic_int g_process_exit_res;
 
 static BITSET_DEFINE(g_vita_opened_files_valid, MAX_OPENED_FILES);
+static Mutex g_vita_opened_files_mutex;
 static VitaOpenedFile g_vita_opened_files[MAX_OPENED_FILES];
 
 static BITSET_DEFINE(g_vita_opened_dirs_valid, MAX_OPENED_DIRS);
+static Mutex g_vita_opened_dirs_mutex;
 static VitaOpenedDir g_vita_opened_dirs[MAX_OPENED_DIRS];
 
 static VitaOpenedFile *opened_file_alloc(void)
 {
-	uint32_t index = bitset_find_first_clear_and_set(g_vita_opened_files_valid);
+	uint32_t index;
+
+	mutexLock(&g_vita_opened_files_mutex);
+	index = bitset_find_first_clear_and_set(g_vita_opened_files_valid);
+	mutexUnlock(&g_vita_opened_files_mutex);
+
 	if (index == UINT32_MAX)
 		return NULL;
 
@@ -53,19 +61,34 @@ static VitaOpenedFile *opened_file_alloc(void)
 	return &g_vita_opened_files[index];
 }
 
+static void opened_file_release(VitaOpenedFile *file)
+{
+	mutexLock(&g_vita_opened_files_mutex);
+	BITSET_CLEAR(g_vita_opened_files_valid, file->index);
+	mutexUnlock(&g_vita_opened_files_mutex);
+}
+
 static VitaOpenedFile *get_opened_file_for_fd(SceUID fd)
 {
+	mutexLock(&g_vita_opened_files_mutex);
 	bitset_for_each_bit_set(g_vita_opened_files_valid, index) {
-		if (g_vita_opened_files[index].fd == fd)
+		if (g_vita_opened_files[index].fd == fd) {
+			mutexUnlock(&g_vita_opened_files_mutex);
 			return &g_vita_opened_files[index];
+		}
 	}
-
+	mutexUnlock(&g_vita_opened_files_mutex);
 	return NULL;
 }
 
 static VitaOpenedDir *opened_dir_alloc(void)
 {
-	uint32_t index = bitset_find_first_clear_and_set(g_vita_opened_dirs_valid);
+	uint32_t index;
+
+	mutexLock(&g_vita_opened_dirs_mutex);
+	index = bitset_find_first_clear_and_set(g_vita_opened_dirs_valid);
+	mutexUnlock(&g_vita_opened_dirs_mutex);
+
 	if (index == UINT32_MAX)
 		return NULL;
 
@@ -74,21 +97,41 @@ static VitaOpenedDir *opened_dir_alloc(void)
 	return &g_vita_opened_dirs[index];
 }
 
+static void opened_dir_release(VitaOpenedDir *dir)
+{
+	mutexLock(&g_vita_opened_dirs_mutex);
+	BITSET_CLEAR(g_vita_opened_dirs_valid, dir->index);
+	mutexUnlock(&g_vita_opened_dirs_mutex);
+}
+
 static VitaOpenedDir *get_opened_dir_for_fd(SceUID fd)
 {
+	mutexLock(&g_vita_opened_dirs_mutex);
 	bitset_for_each_bit_set(g_vita_opened_dirs_valid, index) {
-		if (g_vita_opened_dirs[index].fd == fd)
+		if (g_vita_opened_dirs[index].fd == fd) {
+			mutexUnlock(&g_vita_opened_dirs_mutex);
 			return &g_vita_opened_dirs[index];
+		}
 	}
-
+	mutexUnlock(&g_vita_opened_dirs_mutex);
 	return NULL;
 }
 
-int SceLibKernel_init(UEvent *process_exit_event_ptr, int *process_exit_res_ptr)
+int SceLibKernel_init(void)
 {
-	g_process_exit_event_ptr = process_exit_event_ptr;
-	g_process_exit_res_ptr = process_exit_res_ptr;
+	ueventCreate(&g_process_exit_event, false);
+
 	return 0;
+}
+
+UEvent *SceLibKernel_get_process_exit_uevent(void)
+{
+	return &g_process_exit_event;
+}
+
+int SceLibKernel_get_process_exit_res(void)
+{
+	return atomic_load(&g_process_exit_res);
 }
 
 void *sceKernelGetTLSAddr(int key)
@@ -107,8 +150,8 @@ int sceKernelExitProcess(int res)
 {
 	LOG("sceKernelExitProcess called! Return value %d", res);
 
-	*g_process_exit_res_ptr = res;
-	ueventSignal(g_process_exit_event_ptr);
+	atomic_store(&g_process_exit_res, res);
+	ueventSignal(&g_process_exit_event);
 
 	threadExit();
 
@@ -199,7 +242,7 @@ int sceIoClose(SceUID fd)
 
 	fp = vfile->fp;
 	free(vfile->file);
-	BITSET_CLEAR(g_vita_opened_files_valid, vfile->index);
+	opened_file_release(vfile);
 
 	if (fclose(fp))
 		return SCE_ERROR_ERRNO_EBADF;
@@ -253,7 +296,7 @@ int sceIoDclose(SceUID fd)
 
 	dir = vdir->dir;
 	free(vdir->path);
-	BITSET_CLEAR(g_vita_opened_dirs_valid, vdir->index);
+	opened_dir_release(vdir);
 
 	if (closedir(dir))
 		return SCE_ERROR_ERRNO_EBADF;

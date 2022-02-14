@@ -15,15 +15,10 @@
 
 static int launch(SceKernelThreadEntry entry)
 {
-	UEvent process_exit_event;
-	int process_exit_res;
-	Result res;
 	int ret;
 
-	ueventCreate(&process_exit_event, false);
-
 	/* Init modules */
-	ret = SceLibKernel_init(&process_exit_event, &process_exit_res);
+	ret = SceLibKernel_init();
 	if (ret != 0)
 		goto done;
 	ret = SceKernelThreadMgr_init();
@@ -43,21 +38,12 @@ static int launch(SceKernelThreadEntry entry)
 
 	ret = SceKernelThreadMgr_main_entry(entry, 0, NULL);
 
-	LOG("Waiting for process termination...");
+	SceDisplay_finish();
+	SceKernelThreadMgr_finish();
 
-	res = waitSingle(waiterForUEvent(&process_exit_event), -1);
-	if (R_FAILED(res)) {
-		LOG("Error to wait for : 0x%lx", res);
-		ret = -1;
-		goto done;
-	}
-
-	LOG("Process finished! Returned: %d", process_exit_res);
-
-	ret = process_exit_res;
+	LOG("Process finished! Returned: %d", ret);
 
 done:
-
 	return ret;
 }
 
