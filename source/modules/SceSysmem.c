@@ -4,7 +4,7 @@
 #include <switch.h>
 #include <psp2/kernel/error.h>
 #include <psp2/kernel/sysmem.h>
-#include "bitset.h"
+#include "protected_bitset.h"
 #include "utils.h"
 #include "log.h"
 
@@ -16,47 +16,12 @@ typedef struct {
 	void *base;
 } VitaMemBlockInfo;
 
-static BITSET_DEFINE(g_vita_memblock_infos_valid, MAX_MEMBLOCKS);
-static Mutex g_vita_memblock_infos_mutex;
-static VitaMemBlockInfo g_vita_memblock_infos[MAX_MEMBLOCKS];
-
 static _Atomic SceUID g_last_uid = 1;
 
-static VitaMemBlockInfo *memblock_info_alloc(void)
-{
-	uint32_t index;
-
-	mutexLock(&g_vita_memblock_infos_mutex);
-	index = bitset_find_first_clear_and_set(g_vita_memblock_infos_valid);
-	mutexUnlock(&g_vita_memblock_infos_mutex);
-
-	if (index == UINT32_MAX)
-		return NULL;
-
-	g_vita_memblock_infos[index].index = index;
-
-	return &g_vita_memblock_infos[index];
-}
-
-static void memblock_info_release(VitaMemBlockInfo *block)
-{
-	mutexLock(&g_vita_memblock_infos_mutex);
-	BITSET_CLEAR(g_vita_memblock_infos_valid, block->index);
-	mutexUnlock(&g_vita_memblock_infos_mutex);
-}
-
-static VitaMemBlockInfo *get_memblock_info_for_uid(SceUID uid)
-{
-	mutexLock(&g_vita_memblock_infos_mutex);
-	bitset_for_each_bit_set(g_vita_memblock_infos_valid, index) {
-		if (g_vita_memblock_infos[index].uid == uid) {
-			mutexUnlock(&g_vita_memblock_infos_mutex);
-			return &g_vita_memblock_infos[index];
-		}
-	}
-	mutexUnlock(&g_vita_memblock_infos_mutex);
-	return NULL;
-}
+DECL_PROTECTED_BITSET(VitaMemBlockInfo, vita_memblock_infos, MAX_MEMBLOCKS)
+DECL_PROTECTED_BITSET_ALLOC(memblock_info_alloc, vita_memblock_infos, VitaMemBlockInfo)
+DECL_PROTECTED_BITSET_RELEASE(memblock_info_release, vita_memblock_infos, VitaMemBlockInfo)
+DECL_PROTECTED_BITSET_GET_FOR_UID(get_memblock_info_for_uid, vita_memblock_infos, VitaMemBlockInfo)
 
 SceUID SceSysmem_get_next_uid(void)
 {

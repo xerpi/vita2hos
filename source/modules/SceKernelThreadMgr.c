@@ -6,7 +6,7 @@
 #include "SceKernelThreadMgr.h"
 #include "SceLibKernel.h"
 #include "SceSysmem.h"
-#include "bitset.h"
+#include "protected_bitset.h"
 #include "utils.h"
 #include "log.h"
 
@@ -23,47 +23,12 @@
 #define MAX_THREADS	32
 #define KERNEL_TLS_SIZE 0x800
 
-static BITSET_DEFINE(g_vita_thread_infos_valid, MAX_THREADS);
-static Mutex g_vita_thread_infos_mutex;
-static VitaThreadInfo g_vita_thread_infos[MAX_THREADS];
-
 static s32 g_vita_thread_info_tls_slot_id;
 
-static VitaThreadInfo *thread_info_alloc(void)
-{
-	uint32_t index;
-
-	mutexLock(&g_vita_thread_infos_mutex);
-	index = bitset_find_first_clear_and_set(g_vita_thread_infos_valid);
-	mutexUnlock(&g_vita_thread_infos_mutex);
-
-	if (index == UINT32_MAX)
-		return NULL;
-
-	g_vita_thread_infos[index].index = index;
-
-	return &g_vita_thread_infos[index];
-}
-
-static void thread_info_release(VitaThreadInfo *thread)
-{
-	mutexLock(&g_vita_thread_infos_mutex);
-	BITSET_CLEAR(g_vita_thread_infos_valid, thread->index);
-	mutexUnlock(&g_vita_thread_infos_mutex);
-}
-
-static VitaThreadInfo *get_thread_info_for_uid(SceUID thid)
-{
-	mutexLock(&g_vita_thread_infos_mutex);
-	bitset_for_each_bit_set(g_vita_thread_infos_valid, index) {
-		if (g_vita_thread_infos[index].thid == thid) {
-			mutexUnlock(&g_vita_thread_infos_mutex);
-			return &g_vita_thread_infos[index];
-		}
-	}
-	mutexUnlock(&g_vita_thread_infos_mutex);
-	return NULL;
-}
+DECL_PROTECTED_BITSET(VitaThreadInfo, vita_thread_infos, MAX_THREADS)
+DECL_PROTECTED_BITSET_ALLOC(thread_info_alloc, vita_thread_infos, VitaThreadInfo)
+DECL_PROTECTED_BITSET_RELEASE(thread_info_release, vita_thread_infos, VitaThreadInfo)
+DECL_PROTECTED_BITSET_GET_FOR_UID(get_thread_info_for_uid, vita_thread_infos, VitaThreadInfo)
 
 static inline int vita_priority_to_hos_priority(int priority)
 {
@@ -106,7 +71,7 @@ static void NORETURN thread_entry_wrapper(void *arg)
 
 	ret = ti->entry(ti->arglen, ti->argp);
 
-	LOG("Thread 0x%x returned with: 0x%x", ti->thid, ret);
+	LOG("Thread 0x%x returned with: 0x%x", ti->uid, ret);
 
 	threadExit();
 }
@@ -127,7 +92,7 @@ static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int in
 	}
 
 	memset(ti, 0, sizeof(*ti));
-	ti->thid = SceSysmem_get_next_uid();
+	ti->uid = SceSysmem_get_next_uid();
 	strncpy(ti->name, name, sizeof(ti->name) - 1);
 	ti->entry = entry;
 	ti->vita_tls = malloc(KERNEL_TLS_SIZE);
@@ -139,9 +104,9 @@ static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int in
 		return SCE_KERNEL_ERROR_THREAD_ERROR;
 	}
 
-	LOG("Created thread \"%s\", thid: 0x%x", name, ti->thid);
+	LOG("Created thread \"%s\", thid: 0x%x", name, ti->uid);
 
-	return ti->thid;
+	return ti->uid;
 }
 
 static int start_thread(SceUID thid, SceSize arglen, void *argp)

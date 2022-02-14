@@ -6,7 +6,7 @@
 typedef struct {
 	uint32_t index;
 	Thread thread;
-	SceUID thid;
+	SceUID uid;
 	char name[32];
 	SceKernelThreadEntry entry;
 	SceSize arglen;

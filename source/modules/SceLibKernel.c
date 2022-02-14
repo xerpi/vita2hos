@@ -13,23 +13,23 @@
 #include "SceLibKernel.h"
 #include "SceKernelThreadMgr.h"
 #include "SceSysmem.h"
-#include "bitset.h"
+#include "protected_bitset.h"
 #include "utils.h"
 #include "log.h"
 
 #define MAX_OPENED_FILES 32
-#define MAX_OPENED_DIRS 32
+#define MAX_OPENED_DIRS  32
 
 typedef struct {
 	uint32_t index;
-	SceUID fd;
+	SceUID uid;
 	FILE *fp;
 	char *file;
 } VitaOpenedFile;
 
 typedef struct {
 	uint32_t index;
-	SceUID fd;
+	SceUID uid;
 	DIR *dir;
 	char *path;
 } VitaOpenedDir;
@@ -37,85 +37,15 @@ typedef struct {
 static UEvent g_process_exit_event;
 static atomic_int g_process_exit_res;
 
-static BITSET_DEFINE(g_vita_opened_files_valid, MAX_OPENED_FILES);
-static Mutex g_vita_opened_files_mutex;
-static VitaOpenedFile g_vita_opened_files[MAX_OPENED_FILES];
+DECL_PROTECTED_BITSET(VitaOpenedFile, vita_opened_files, MAX_OPENED_FILES)
+DECL_PROTECTED_BITSET_ALLOC(opened_file_alloc, vita_opened_files, VitaOpenedFile)
+DECL_PROTECTED_BITSET_RELEASE(opened_file_release, vita_opened_files, VitaOpenedFile)
+DECL_PROTECTED_BITSET_GET_FOR_UID(get_opened_file_for_fd, vita_opened_files, VitaOpenedFile)
 
-static BITSET_DEFINE(g_vita_opened_dirs_valid, MAX_OPENED_DIRS);
-static Mutex g_vita_opened_dirs_mutex;
-static VitaOpenedDir g_vita_opened_dirs[MAX_OPENED_DIRS];
-
-static VitaOpenedFile *opened_file_alloc(void)
-{
-	uint32_t index;
-
-	mutexLock(&g_vita_opened_files_mutex);
-	index = bitset_find_first_clear_and_set(g_vita_opened_files_valid);
-	mutexUnlock(&g_vita_opened_files_mutex);
-
-	if (index == UINT32_MAX)
-		return NULL;
-
-	g_vita_opened_files[index].index = index;
-
-	return &g_vita_opened_files[index];
-}
-
-static void opened_file_release(VitaOpenedFile *file)
-{
-	mutexLock(&g_vita_opened_files_mutex);
-	BITSET_CLEAR(g_vita_opened_files_valid, file->index);
-	mutexUnlock(&g_vita_opened_files_mutex);
-}
-
-static VitaOpenedFile *get_opened_file_for_fd(SceUID fd)
-{
-	mutexLock(&g_vita_opened_files_mutex);
-	bitset_for_each_bit_set(g_vita_opened_files_valid, index) {
-		if (g_vita_opened_files[index].fd == fd) {
-			mutexUnlock(&g_vita_opened_files_mutex);
-			return &g_vita_opened_files[index];
-		}
-	}
-	mutexUnlock(&g_vita_opened_files_mutex);
-	return NULL;
-}
-
-static VitaOpenedDir *opened_dir_alloc(void)
-{
-	uint32_t index;
-
-	mutexLock(&g_vita_opened_dirs_mutex);
-	index = bitset_find_first_clear_and_set(g_vita_opened_dirs_valid);
-	mutexUnlock(&g_vita_opened_dirs_mutex);
-
-	if (index == UINT32_MAX)
-		return NULL;
-
-	g_vita_opened_dirs[index].index = index;
-
-	return &g_vita_opened_dirs[index];
-}
-
-static void opened_dir_release(VitaOpenedDir *dir)
-{
-	mutexLock(&g_vita_opened_dirs_mutex);
-	BITSET_CLEAR(g_vita_opened_dirs_valid, dir->index);
-	mutexUnlock(&g_vita_opened_dirs_mutex);
-}
-
-static VitaOpenedDir *get_opened_dir_for_fd(SceUID fd)
-{
-	mutexLock(&g_vita_opened_dirs_mutex);
-	bitset_for_each_bit_set(g_vita_opened_dirs_valid, index) {
-		if (g_vita_opened_dirs[index].fd == fd) {
-			mutexUnlock(&g_vita_opened_dirs_mutex);
-			return &g_vita_opened_dirs[index];
-		}
-	}
-	mutexUnlock(&g_vita_opened_dirs_mutex);
-	return NULL;
-}
+DECL_PROTECTED_BITSET(VitaOpenedDir, vita_opened_dirs, MAX_OPENED_DIRS)
+DECL_PROTECTED_BITSET_ALLOC(opened_dir_alloc, vita_opened_dirs, VitaOpenedDir)
+DECL_PROTECTED_BITSET_RELEASE(opened_dir_release, vita_opened_dirs, VitaOpenedDir)
+DECL_PROTECTED_BITSET_GET_FOR_UID(get_opened_dir_for_fd, vita_opened_dirs, VitaOpenedDir)
 
 int SceLibKernel_init(void)
 {
@@ -232,11 +162,11 @@ SceUID sceIoOpen(const char *file, int flags, SceMode mode)
 		return SCE_ERROR_ERRNO_EMFILE;
 	}
 
-	vfile->fd = SceSysmem_get_next_uid();
+	vfile->uid = SceSysmem_get_next_uid();
 	vfile->fp = fp;
 	vfile->file = strdup(file);
 
-	return vfile->fd;
+	return vfile->uid;
 }
 
 int sceIoClose(SceUID fd)
@@ -286,11 +216,11 @@ SceUID sceIoDopen(const char *dirname)
 		return SCE_ERROR_ERRNO_EMFILE;
 	}
 
-	vdir->fd = SceSysmem_get_next_uid();
+	vdir->uid = SceSysmem_get_next_uid();
 	vdir->dir = dir;
 	vdir->path = strdup(dirname);
 
-	return vdir->fd;
+	return vdir->uid;
 }
 
 int sceIoDclose(SceUID fd)
