@@ -5,19 +5,34 @@
 #include <string.h>
 #include <switch.h>
 #include <psp2/kernel/threadmgr.h>
+#include "SceSysmem.h"
 #include "SceKernelThreadMgr.h"
 #include "SceLibKernel.h"
 #include "SceCtrl.h"
 #include "SceDisplay.h"
 #include "SceTouch.h"
+#include "module.h"
 #include "log.h"
 #include "load.h"
+
+static void register_modules(void)
+{
+	SceSysmem_register();
+	SceLibKernel_register();
+	SceKernelThreadMgr_register();
+	SceDisplay_register();
+	SceCtrl_register();
+	SceTouch_register();
+}
 
 static int launch(SceKernelThreadEntry entry)
 {
 	int ret;
 
 	/* Init modules */
+	ret = SceSysmem_init();
+	if (ret != 0)
+		goto done;
 	ret = SceLibKernel_init();
 	if (ret != 0)
 		goto done;
@@ -58,6 +73,8 @@ int main(int argc, char *argv[])
 
 	LOG("-- vita2hos --");
 
+	register_modules();
+
 	ret = load_exe(&jit, "/test.elf", &entry);
 	if (ret == 0) {
 		/* Close FB console */
@@ -82,6 +99,8 @@ int main(int argc, char *argv[])
 	} else {
 		LOG("Error loading ELF");
 	}
+
+	module_finish();
 
 	while (appletMainLoop()) {
 		/*padUpdate(&pad);

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <switch.h>
 #include <psp2/display.h>
+#include "module.h"
 #include "utils.h"
 #include "log.h"
 
@@ -68,6 +69,15 @@ int sceDisplaySetFrameBuf(const SceDisplayFrameBuf *pParam, SceDisplaySetBufSync
 	return 0;
 }
 
+void SceDisplay_register(void)
+{
+	static const export_entry_t exports[] = {
+		{0x7A410B64, sceDisplaySetFrameBuf},
+	};
+
+	module_register_exports(exports, ARRAY_SIZE(exports));
+}
+
 int SceDisplay_init(void)
 {
 	Result res;
@@ -85,6 +95,12 @@ int SceDisplay_init(void)
 		LOG("Error starting VSync thread: 0x%lx", res);
 		return res;
 	}
+
+	static const export_entry_t exports[] = {
+		{0x7A410B64, sceDisplaySetFrameBuf},
+	};
+
+	module_register_exports(exports, ARRAY_SIZE(exports));
 
 	return 0;
 }

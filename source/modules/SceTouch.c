@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <switch.h>
 #include <psp2/touch.h>
+#include "module.h"
 #include "utils.h"
 #include "log.h"
 
@@ -67,6 +68,16 @@ int sceTouchGetPanelInfo(SceUInt32 port, SceTouchPanelInfo *pPanelInfo)
 	default:
 		return SCE_TOUCH_ERROR_INVALID_ARG;
 	}
+}
+
+void SceTouch_register(void)
+{
+	static const export_entry_t exports[] = {
+		{0x10A2CA25, sceTouchGetPanelInfo},
+		{0xFF082DF0, sceTouchPeek},
+	};
+
+	module_register_exports(exports, ARRAY_SIZE(exports));
 }
 
 int SceTouch_init(void)

@@ -6,6 +6,7 @@
 #include "SceKernelThreadMgr.h"
 #include "SceLibKernel.h"
 #include "SceSysmem.h"
+#include "module.h"
 #include "protected_bitset.h"
 #include "utils.h"
 #include "log.h"
@@ -41,25 +42,6 @@ static inline int vita_priority_to_hos_priority(int priority)
 	return HOS_HIGHEST_PRIORITY +
 	       ((priority - SCE_KERNEL_HIGHEST_PRIORITY_USER) * (HOS_LOWEST_PRIORITY - HOS_HIGHEST_PRIORITY)) /
 	       (SCE_KERNEL_LOWEST_PRIORITY_USER - SCE_KERNEL_HIGHEST_PRIORITY_USER);
-}
-
-int SceKernelThreadMgr_init(void)
-{
-	g_vita_thread_info_tls_slot_id = threadTlsAlloc(NULL);
-
-	return 0;
-}
-
-int SceKernelThreadMgr_finish(void)
-{
-	threadTlsFree(g_vita_thread_info_tls_slot_id);
-
-	return 0;
-}
-
-VitaThreadInfo *SceKernelThreadMgr_get_thread_info(void)
-{
-	return threadTlsGet(g_vita_thread_info_tls_slot_id);
 }
 
 static void NORETURN thread_entry_wrapper(void *arg)
@@ -245,4 +227,38 @@ int sceKernelDelayThread(SceUInt delay)
 {
 	svcSleepThread((s64)delay * 1000);
 	return 0;
+}
+
+void SceKernelThreadMgr_register(void)
+{
+	static const export_entry_t exports[] = {
+		{0xC5C11EE7, sceKernelCreateThread},
+		{0x1BBDE3D9, sceKernelDeleteThread},
+		{0xF08DE149, sceKernelStartThread},
+		{0x0C8A38E1, sceKernelExitThread},
+		{0x1D17DECF, sceKernelExitDeleteThread},
+		{0xDDB395A9, sceKernelWaitThreadEnd},
+		{0x4B675D05, sceKernelDelayThread},
+	};
+
+	module_register_exports(exports, ARRAY_SIZE(exports));
+}
+
+int SceKernelThreadMgr_init(void)
+{
+	g_vita_thread_info_tls_slot_id = threadTlsAlloc(NULL);
+
+	return 0;
+}
+
+int SceKernelThreadMgr_finish(void)
+{
+	threadTlsFree(g_vita_thread_info_tls_slot_id);
+
+	return 0;
+}
+
+VitaThreadInfo *SceKernelThreadMgr_get_thread_info(void)
+{
+	return threadTlsGet(g_vita_thread_info_tls_slot_id);
 }

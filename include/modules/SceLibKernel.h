@@ -7,6 +7,7 @@
 #define SCE_ERROR_ERRNO_EMFILE  0x80010018
 #define SCE_ERROR_ERRNO_EBADF   0x80010009
 
+void SceLibKernel_register(void);
 int SceLibKernel_init(void);
 UEvent *SceLibKernel_get_process_exit_uevent(void);
 int SceLibKernel_get_process_exit_res();

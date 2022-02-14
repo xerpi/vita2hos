@@ -6,6 +6,7 @@
 #include "arm-encode.h"
 #include "load.h"
 #include "log.h"
+#include "module.h"
 #include "miniz.h"
 #include "sce-elf.h"
 #include "self.h"
@@ -41,74 +42,6 @@ static int load_self(Jit *jit, const void *data, void **entry);
 static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_info_t *segments, int num_segments);
 static int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_imports_u_t *import);
 static int relocate(const void *reloc, uint32_t size, segment_info_t *segs);
-
-extern void sceKernelAllocMemBlock();
-extern void sceKernelFreeMemBlock();
-extern void sceKernelGetMemBlockBase();
-extern void sceKernelCreateThread();
-extern void sceKernelDeleteThread();
-extern void sceKernelStartThread();
-extern void sceKernelExitThread();
-extern void sceKernelExitDeleteThread();
-extern void sceKernelWaitThreadEnd();
-extern void sceKernelDelayThread();
-extern void sceKernelGetTLSAddr();
-extern void sceKernelExitProcess();
-extern void sceKernelCreateLwMutex();
-extern void sceKernelDeleteLwMutex();
-extern void sceKernelLockLwMutex();
-extern void sceKernelUnlockLwMutex();
-extern void sceIoOpen();
-extern void sceIoClose();
-extern void sceIoRead();
-extern void sceIoDopen();
-extern void sceIoDread();
-extern void sceIoDclose();
-extern void sceDisplaySetFrameBuf();
-extern void sceCtrlPeekBufferPositive();
-extern void sceTouchGetPanelInfo();
-extern void sceTouchPeek();
-
-static const struct {
-	uint32_t nid;
-	void *func;
-} stub_map[] = {
-	{0xB9D5EBDE, sceKernelAllocMemBlock},
-	{0xA91E15EE, sceKernelFreeMemBlock},
-	{0xB8EF5818, sceKernelGetMemBlockBase},
-	{0xC5C11EE7, sceKernelCreateThread},
-	{0x1BBDE3D9, sceKernelDeleteThread},
-	{0xF08DE149, sceKernelStartThread},
-	{0x0C8A38E1, sceKernelExitThread},
-	{0x1D17DECF, sceKernelExitDeleteThread},
-	{0xDDB395A9, sceKernelWaitThreadEnd},
-	{0x4B675D05, sceKernelDelayThread},
-	{0xB295EB61, sceKernelGetTLSAddr},
-	{0x7595D9AA, sceKernelExitProcess},
- 	{0xDA6EC8EF, sceKernelCreateLwMutex},
-	{0x244E76D2, sceKernelDeleteLwMutex},
-	{0x46E7BE7B, sceKernelLockLwMutex},
-	{0x91FA6614, sceKernelUnlockLwMutex},
-	{0x6C60AC61, sceIoOpen},
-	{0xF5C6F098, sceIoClose},
-	{0xFDB32293, sceIoRead},
-	{0xA9283DD0, sceIoDopen},
-	{0x9C8B6624, sceIoDread},
-	{0x422A221A, sceIoDclose},
-	{0x7A410B64, sceDisplaySetFrameBuf},
-	{0xA9C3CED6, sceCtrlPeekBufferPositive},
-	{0x10A2CA25, sceTouchGetPanelInfo},
-	{0xFF082DF0, sceTouchPeek},
-};
-
-static inline const void *get_stub_func(uint32_t nid)
-{
-	for (int i = 0; i < ARRAY_SIZE(stub_map); i++) {
-		if (stub_map[i].nid == nid)
-			return stub_map[i].func;
-	}
-	return NULL;
-}
 
 int elf_check_vita_header(const Elf32_Ehdr *hdr)
 {
@@ -508,6 +441,7 @@ err_jit_close:
 
 static int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_imports_u_t *import)
 {
+	const void *addr;
 	uint32_t nid;
 	uint32_t *stub;
 
@@ -521,10 +455,10 @@ static int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_impo
 		IF_VERBOSE LOG("  Trying to resolve function NID 0x%08lx", nid);
 		IF_VERBOSE LOG("    Stub located at: %p", stub);
 
-		uintptr_t export_addr = (uintptr_t)get_stub_func(nid);
-		if (export_addr) {
-			stub[0] = arm_encode_movw(12, (uint16_t)export_addr);
-			stub[1] = arm_encode_movt(12, (uint16_t)(export_addr >> 16));
+		addr = module_get_export_addr(nid);
+		if (addr) {
+			stub[0] = arm_encode_movw(12, (uint16_t)(uintptr_t)addr);
+			stub[1] = arm_encode_movt(12, (uint16_t)(((uintptr_t)addr) >> 16));
 			stub[2] = arm_encode_bx(12);
 			LOG("    NID resolved successfully!");
 		} else {

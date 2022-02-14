@@ -13,6 +13,7 @@
 #include "SceLibKernel.h"
 #include "SceKernelThreadMgr.h"
 #include "SceSysmem.h"
+#include "module.h"
 #include "protected_bitset.h"
 #include "utils.h"
 #include "log.h"
@@ -46,23 +47,6 @@ DECL_PROTECTED_BITSET(VitaOpenedDir, vita_opened_dirs, MAX_OPENED_DIRS)
 DECL_PROTECTED_BITSET_ALLOC(opened_dir_alloc, vita_opened_dirs, VitaOpenedDir)
 DECL_PROTECTED_BITSET_RELEASE(opened_dir_release, vita_opened_dirs, VitaOpenedDir)
 DECL_PROTECTED_BITSET_GET_FOR_UID(get_opened_dir_for_fd, vita_opened_dirs, VitaOpenedDir)
-
-int SceLibKernel_init(void)
-{
-	ueventCreate(&g_process_exit_event, false);
-
-	return 0;
-}
-
-UEvent *SceLibKernel_get_process_exit_uevent(void)
-{
-	return &g_process_exit_event;
-}
-
-int SceLibKernel_get_process_exit_res(void)
-{
-	return atomic_load(&g_process_exit_res);
-}
 
 void *sceKernelGetTLSAddr(int key)
 {
@@ -298,4 +282,41 @@ int sceIoDread(SceUID fd, SceIoDirent *dirent)
 	dirent->d_private = NULL;
 
 	return 1;
+}
+
+void SceLibKernel_register(void)
+{
+	static const export_entry_t exports[] = {
+		{0x7595D9AA, sceKernelExitProcess},
+		{0xB295EB61, sceKernelGetTLSAddr},
+		{0xDA6EC8EF, sceKernelCreateLwMutex},
+		{0x244E76D2, sceKernelDeleteLwMutex},
+		{0x46E7BE7B, sceKernelLockLwMutex},
+		{0x91FA6614, sceKernelUnlockLwMutex},
+		{0x6C60AC61, sceIoOpen},
+		{0xF5C6F098, sceIoClose},
+		{0xFDB32293, sceIoRead},
+		{0xA9283DD0, sceIoDopen},
+		{0x9C8B6624, sceIoDread},
+		{0x422A221A, sceIoDclose},
+	};
+
+	module_register_exports(exports, ARRAY_SIZE(exports));
+}
+
+int SceLibKernel_init(void)
+{
+	ueventCreate(&g_process_exit_event, false);
+
+	return 0;
+}
+
+UEvent *SceLibKernel_get_process_exit_uevent(void)
+{
+	return &g_process_exit_event;
+}
+
+int SceLibKernel_get_process_exit_res(void)
+{
+	return atomic_load(&g_process_exit_res);
 }

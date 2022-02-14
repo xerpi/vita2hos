@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <switch.h>
 #include <psp2/ctrl.h>
+#include "module.h"
 #include "utils.h"
 #include "log.h"
 
@@ -58,6 +59,15 @@ int sceCtrlPeekBufferPositive(int port, SceCtrlData *pad_data, int count)
 	pad_data->ry = (255 * (analog_stick_r.y - JOYSTICK_MIN)) / (JOYSTICK_MAX - JOYSTICK_MIN);
 
 	return 0;
+}
+
+void SceCtrl_register(void)
+{
+	static const export_entry_t exports[] = {
+		{0xA9C3CED6, sceCtrlPeekBufferPositive},
+	};
+
+	module_register_exports(exports, ARRAY_SIZE(exports));
 }
 
 int SceCtrl_init(void)
