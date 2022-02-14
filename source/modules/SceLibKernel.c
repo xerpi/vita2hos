@@ -161,6 +161,8 @@ int sceKernelExitProcess(int res)
 int sceKernelCreateLwMutex(SceKernelLwMutexWork *pWork, const char *pName, unsigned int attr,
 			   int initCount, const SceKernelLwMutexOptParam *pOptParam)
 {
+	Mutex *mutex = (void *)pWork;
+	*mutex = initCount;
 	return 0;
 }
 
@@ -171,16 +173,21 @@ int sceKernelDeleteLwMutex(SceKernelLwMutexWork *pWork)
 
 int sceKernelLockLwMutex(SceKernelLwMutexWork *pWork, int lockCount, unsigned int *pTimeout)
 {
+	mutexLock((void *)pWork);
 	return 0;
 }
 
 int sceKernelTryLockLwMutex(SceKernelLwMutexWork *pWork, int lockCount)
 {
-	return 0;
+	if (mutexTryLock((void *)pWork))
+		return 0;
+	else
+		return SCE_KERNEL_ERROR_LW_MUTEX_FAILED_TO_OWN;
 }
 
 int sceKernelUnlockLwMutex(SceKernelLwMutexWork *pWork, int unlockCount)
 {
+	mutexUnlock((void *)pWork);
 	return 0;
 }
 

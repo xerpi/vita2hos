@@ -14,10 +14,7 @@
     "system_resource_size": "0",
     "disable_device_address_space_merge": false,
     "filesystem_access": {
-        "permissions": "0xFFFFFFFFFFFFFFFF",
-        "content_owner_ids": [
-            "0x0100000000001000"
-        ]
+        "permissions": "0xFFFFFFFFFFFFFFFF"
     },
     "service_host": [
         "*"
@@ -166,15 +163,6 @@
                 "allow_debug": true,
                 "force_debug": true
             }
-        },
-        {
-            "type": "map_region",
-            "value": [
-                {
-                    "region_type": 1,
-                    "is_ro": true
-                }
-            ]
         }
     ]
 }

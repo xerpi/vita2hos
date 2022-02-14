@@ -10,8 +10,15 @@
 #include "utils.h"
 #include "log.h"
 
-#define SCE_KERNEL_STACK_SIZE_USER_MAIN		(256 * 1024)
-#define SCE_KERNEL_STACK_SIZE_USER_DEFAULT	(4 * 1024)
+#define SCE_KERNEL_HIGHEST_PRIORITY_USER		64
+#define SCE_KERNEL_LOWEST_PRIORITY_USER			191
+#define SCE_KERNEL_DEFAULT_PRIORITY			((SceInt32)0x10000100)
+#define SCE_KERNEL_DEFAULT_PRIORITY_GAME_APP		160
+#define SCE_KERNEL_DEFAULT_PRIORITY_USER		SCE_KERNEL_DEFAULT_PRIORITY
+#define SCE_KERNEL_THREAD_STACK_SIZE_DEFAULT_USER_MAIN	(256 * 1024)
+
+#define HOS_HIGHEST_PRIORITY	28
+#define HOS_LOWEST_PRIORITY	59
 
 #define MAX_THREADS	32
 #define KERNEL_TLS_SIZE 0x800
@@ -58,6 +65,19 @@ static VitaThreadInfo *get_thread_info_for_uid(SceUID thid)
 	return NULL;
 }
 
+static inline int vita_priority_to_hos_priority(int priority)
+{
+	if ((priority & SCE_KERNEL_DEFAULT_PRIORITY) == SCE_KERNEL_DEFAULT_PRIORITY)
+		priority = SCE_KERNEL_DEFAULT_PRIORITY_GAME_APP + (priority & ~SCE_KERNEL_DEFAULT_PRIORITY);
+
+	if ((priority < SCE_KERNEL_HIGHEST_PRIORITY_USER) || (priority > SCE_KERNEL_LOWEST_PRIORITY_USER))
+		return SCE_KERNEL_ERROR_ILLEGAL_PRIORITY;
+
+	return HOS_HIGHEST_PRIORITY +
+	       ((priority - SCE_KERNEL_HIGHEST_PRIORITY_USER) * (HOS_LOWEST_PRIORITY - HOS_HIGHEST_PRIORITY)) /
+	       (SCE_KERNEL_LOWEST_PRIORITY_USER - SCE_KERNEL_HIGHEST_PRIORITY_USER);
+}
+
 int SceKernelThreadMgr_init(void)
 {
 	g_vita_thread_info_tls_slot_id = threadTlsAlloc(NULL);
@@ -91,10 +111,14 @@ static void NORETURN thread_entry_wrapper(void *arg)
 	threadExit();
 }
 
-static SceUID create_thread(const char *name, SceKernelThreadEntry entry, SceSize stackSize)
+static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int initPriority, SceSize stackSize)
 {
 	VitaThreadInfo *ti;
 	Result res;
+	int priority = vita_priority_to_hos_priority(initPriority);
+
+	if (priority < 0)
+		return priority;
 
 	ti = thread_info_alloc();
 	if (!ti) {
@@ -108,7 +132,7 @@ static SceUID create_thread(const char *name, SceKernelThreadEntry entry, SceSiz
 	ti->entry = entry;
 	ti->vita_tls = malloc(KERNEL_TLS_SIZE);
 
-	res = threadCreate(&ti->thread, thread_entry_wrapper, ti, NULL, stackSize, 0x3B, -2);
+	res = threadCreate(&ti->thread, thread_entry_wrapper, ti, NULL, stackSize, priority, -2);
 	if (R_FAILED(res)) {
 		LOG("Error creating thread: 0x%lx", res);
 		free(ti->vita_tls);
@@ -144,7 +168,7 @@ SceUID sceKernelCreateThread(const char *name, SceKernelThreadEntry entry, int i
 			     SceSize stackSize, SceUInt attr, int cpuAffinityMask,
 			     const SceKernelThreadOptParam *option)
 {
-	return create_thread(name, entry, stackSize);
+	return create_thread(name, entry, initPriority, stackSize);
 }
 
 int sceKernelDeleteThread(SceUID thid)
@@ -219,7 +243,8 @@ int SceKernelThreadMgr_main_entry(SceKernelThreadEntry entry, int args, void *ar
 	int ret;
 	Result res;
 
-	thid = create_thread("<main>", entry, SCE_KERNEL_STACK_SIZE_USER_MAIN);
+	thid = create_thread("<main>", entry, SCE_KERNEL_DEFAULT_PRIORITY_USER,
+			     SCE_KERNEL_THREAD_STACK_SIZE_DEFAULT_USER_MAIN);
 	if (thid < 0)
 		return thid;
 
