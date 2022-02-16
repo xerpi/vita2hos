@@ -48,6 +48,7 @@ BUILD		:=	build
 SOURCES		:=	source source/modules
 DATA		:=	data
 INCLUDES	:=	include include/modules
+SHADER		:=	shader
 #ROMFS	:=	romfs
 
 #---------------------------------------------------------------------------------
@@ -65,7 +66,7 @@ CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions
 ASFLAGS	:=	-g $(ARCH)
 LDFLAGS	=	-specs=$(DEVKITPRO)/libnx32/switch32.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
-LIBS	:= -lnx
+LIBS	:= -ldeko3dd -lnx -lm
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
@@ -85,7 +86,8 @@ export OUTPUT	:=	$(CURDIR)/$(TARGET)
 export TOPDIR	:=	$(CURDIR)
 
 export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
-			$(foreach dir,$(DATA),$(CURDIR)/$(dir))
+			$(foreach dir,$(DATA),$(CURDIR)/$(dir)) \
+			$(foreach dir,$(SHADER),$(CURDIR)/$(dir))
 
 export DEPSDIR	:=	$(CURDIR)/$(BUILD)
 
@@ -93,6 +95,7 @@ CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
+GLSLFILES	:=	$(foreach dir,$(SHADER),$(notdir $(wildcard $(dir)/*.glsl)))
 
 #---------------------------------------------------------------------------------
 # use CXX for linking C++ projects, CC for standard C
@@ -108,10 +111,11 @@ else
 endif
 #---------------------------------------------------------------------------------
 
-export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES))
+export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES)) $(GLSLFILES:.glsl=.dksh.o)
 export OFILES_SRC	:=	$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
 export OFILES 	:=	$(OFILES_BIN) $(OFILES_SRC)
-export HFILES_BIN	:=	$(addsuffix .h,$(subst .,_,$(BINFILES)))
+export HFILES_BIN	:=	$(addsuffix .h,$(subst .,_,$(BINFILES))) \
+				$(addsuffix .h,$(subst .,_,$(GLSLFILES:.glsl=.dksh)))
 
 export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 			$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
@@ -219,6 +223,34 @@ $(OFILES_SRC)	: $(HFILES_BIN)
 #---------------------------------------------------------------------------------
 %.bin.o	%_bin.h :	%.bin
 #---------------------------------------------------------------------------------
+	@echo $(notdir $<)
+	@$(bin2o)
+
+%_vsh.dksh: %_vsh.glsl
+	@echo {vert} $(notdir $<)
+	@uam -s vert -o $@ $<
+
+%_tcsh.dksh: %_tcsh.glsl
+	@echo {tess_ctrl} $(notdir $<)
+	@uam -s tess_ctrl -o $@ $<
+
+%_tesh.dksh: %_tesh.glsl
+	@echo {tess_eval} $(notdir $<)
+	@uam -s tess_eval -o $@ $<
+
+%_gsh.dksh: %_gsh.glsl
+	@echo {geom} $(notdir $<)
+	@uam -s geom -o $@ $<
+
+%_fsh.dksh: %_fsh.glsl
+	@echo {frag} $(notdir $<)
+	@uam -s frag -o $@ $<
+
+%.dksh: %.glsl
+	@echo {comp} $(notdir $<)
+	@uam -s comp -o $@ $<
+
+%.dksh.o %_dksh.h: %.dksh
 	@echo $(notdir $<)
 	@$(bin2o)
 

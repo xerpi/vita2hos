@@ -51,10 +51,10 @@ static void vsync_thread_func(void *arg)
 			goto next_frame_sleep;
 		}
 
-		memcpy(addr, g_vita_conf_fb.base, g_vita_conf_fb.height * stride);
+		for (int i = 0; i < g_vita_conf_fb.height; i++)
+			memcpy(addr + i * stride, g_vita_conf_fb.base + i * g_vita_conf_fb.pitch * 4, stride);
 		framebufferEnd(&g_fb);
 		continue;
-
 next_frame_sleep:
 		svcSleepThread(16666667ull);
 	}

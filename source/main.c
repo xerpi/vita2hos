@@ -58,6 +58,7 @@ static int launch(SceKernelThreadEntry entry)
 
 	ret = SceKernelThreadMgr_main_entry(entry, 0, NULL);
 
+	SceGxm_finish();
 	SceDisplay_finish();
 	SceKernelThreadMgr_finish();
 
@@ -73,8 +74,8 @@ int main(int argc, char *argv[])
 	void *entry;
 	int ret;
 
-	consoleInit(NULL);
-	log_to_fb_console = true;
+	//consoleInit(NULL);
+	log_to_fb_console = false;
 
 	LOG("-- vita2hos --");
 
@@ -83,9 +84,9 @@ int main(int argc, char *argv[])
 	ret = load_exe(&jit, "/test.elf", &entry);
 	if (ret == 0) {
 		/* Close FB console */
-		consoleUpdate(NULL);
-		log_to_fb_console = false;
-		consoleExit(NULL);
+		//consoleUpdate(NULL);
+		//log_to_fb_console = false;
+		//consoleExit(NULL);
 
 		LOG("Launching PSVita executable!");
 

@@ -34,18 +34,25 @@ static void name(type *var)                               \
 	mutexUnlock(&g_##prefix##_mutex);                 \
 }
 
-#define DECL_PROTECTED_BITSET_GET_FOR_UID(name, prefix, type) \
-static type *name(SceUID uid)                       \
-{                                                             \
-	mutexLock(&g_##prefix##_mutex);                       \
-	bitset_for_each_bit_set(g_##prefix##_valid, index) {  \
-		if (g_##prefix[index].uid == uid) {           \
-			mutexUnlock(&g_##prefix##_mutex);     \
-			return &g_##prefix[index];            \
-		}                                             \
-	}                                                     \
-	mutexUnlock(&g_##prefix##_mutex);                     \
-	return NULL;                                          \
+#define DECL_PROTECTED_BITSET_GET_CMP(name, prefix, type, key_type, key_name, cmp) \
+static type *name(key_type key_name)                                               \
+{                                                                                  \
+	mutexLock(&g_##prefix##_mutex);                                            \
+	bitset_for_each_bit_set(g_##prefix##_valid, index) {                       \
+		if (cmp) {                                                         \
+			mutexUnlock(&g_##prefix##_mutex);                          \
+			return &g_##prefix[index];                                 \
+		}                                                                  \
+	}                                                                          \
+	mutexUnlock(&g_##prefix##_mutex);                                          \
+	return NULL;                                                               \
 }
+
+#define DECL_PROTECTED_BITSET_GET(name, prefix, type, key_type, key_name)     \
+	DECL_PROTECTED_BITSET_GET_CMP(name, prefix, type, key_type, key_name, \
+				      g_##prefix[index].key_name == key_name)
+
+#define DECL_PROTECTED_BITSET_GET_FOR_UID(name, prefix, type) \
+	DECL_PROTECTED_BITSET_GET(name, prefix, type, SceUID, uid)
 
 #endif
