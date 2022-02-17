@@ -451,21 +451,17 @@ static int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_impo
 	for (uint32_t i = 0; i < IMP_GET_FUNC_COUNT(import); i++) {
 		nid = ((uint32_t *)CODE_RX_TO_RW_ADDR(rx_base, rw_base, IMP_GET_FUNC_TABLE(import)))[i];
 		stub = (void *)CODE_RX_TO_RW_ADDR(rx_base, rw_base, IMP_GET_FUNC_ENTRIES(import)[i]);
-
-		IF_VERBOSE LOG("  Trying to resolve function NID 0x%08lx", nid);
-		IF_VERBOSE LOG("    Stub located at: %p", stub);
-
 		addr = module_get_export_addr(nid);
+
 		if (addr) {
 			stub[0] = arm_encode_movw(12, (uint16_t)(uintptr_t)addr);
 			stub[1] = arm_encode_movt(12, (uint16_t)(((uintptr_t)addr) >> 16));
 			stub[2] = arm_encode_bx(12);
-			LOG("    NID resolved successfully!");
 		} else {
 			stub[0] = arm_encode_movw(0, (uint16_t)SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID);
 			stub[1] = arm_encode_movt(0, (uint16_t)(SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID >> 16));
 			stub[2] = arm_encode_ret();
-			LOG("    Could not resolve NID, export not found!");
+			LOG("  Could not resolve NID 0x%08lx, export not found!", nid);
 		}
 	}
 
