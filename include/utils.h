@@ -19,6 +19,16 @@
 #define STRINGIFY(x)	#x
 #define TOSTRING(x)	STRINGIFY(x)
 
+static inline uint32_t next_pow2(uint32_t x)
+{
+	uint32_t val = 1;
+
+	while (val < x)
+		val = val << 1;
+
+	return val;
+}
+
 int utils_load_file(const char *filename, void **data, uint32_t *size);
 
 #endif

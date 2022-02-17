@@ -2,8 +2,10 @@
 #include <switch.h>
 #include <deko3d.h>
 #include <psp2/kernel/error.h>
+#include <psp2/kernel/threadmgr.h>
 #include <psp2/gxm.h>
 #include "SceGxm.h"
+#include "circ_buf.h"
 #include "gxm_to_dk.h"
 #include "module.h"
 #include "protected_bitset.h"
@@ -19,7 +21,6 @@
 
 typedef struct SceGxmContext {
 	SceGxmContextParams params;
-	DkQueue render_queue;
 	DkMemBlock cmdbuf_memblock;
 	DkCmdBuf cmdbuf;
 	struct {
@@ -33,6 +34,10 @@ typedef struct SceGxmContext {
 	} scene;
 } SceGxmContext;
 static_assert(sizeof(SceGxmContext) <= SCE_GXM_MINIMUM_CONTEXT_HOST_MEM_SIZE, "Oversized SceGxmContext");
+
+typedef struct SceGxmSyncObject {
+	DkFence fence;
+} SceGxmSyncObject;
 
 typedef struct SceGxmRegisteredProgram {
 	const SceGxmProgram *programHeader;
@@ -125,6 +130,25 @@ typedef struct {
 	SceSize size;
 } GxmMappedMemoryBlock;
 
+typedef struct {
+	DkFence *fence;
+	void *callback_data;
+} DisplayQueueEntry;
+
+typedef struct {
+	uint32_t tail;
+	uint32_t head;
+	uint32_t num_entries;
+	DisplayQueueEntry *entries;
+	uint32_t display_queue_max_pending_count;
+	SceGxmDisplayQueueCallback *display_queue_callback;
+	uint32_t display_queue_callback_data_size;
+	uint32_t exit_thread;
+	SceUID thid;
+	UEvent ready_evflag;
+	UEvent pending_evflag;
+} DisplayQueueControlBlock;
+
 DECL_PROTECTED_BITSET(GxmMappedMemoryBlock, gxm_mapped_memory_blocks, MAX_GXM_MAPPED_MEMORY_BLOCKS)
 DECL_PROTECTED_BITSET_ALLOC(gxm_mapped_memory_block_alloc, gxm_mapped_memory_blocks, GxmMappedMemoryBlock)
 DECL_PROTECTED_BITSET_RELEASE(gxm_mapped_memory_block_release, gxm_mapped_memory_blocks, GxmMappedMemoryBlock)
@@ -132,7 +156,6 @@ DECL_PROTECTED_BITSET_GET_CMP(gxm_mapped_memory_block_get, gxm_mapped_memory_blo
 			      base >= g_gxm_mapped_memory_blocks[index].base &&
 			      base < (g_gxm_mapped_memory_blocks[index].base + g_gxm_mapped_memory_blocks[index].size))
 
-static SceGxmInitializeParams g_gxm_init_params;
 static bool g_gxm_initialized;
 
 /* Deko3D */
@@ -142,20 +165,21 @@ typedef struct {
 	float color[3];
 } Vertex;
 
-#define FB_NUM		2
-#define FB_WIDTH	960
-#define FB_HEIGHT	544
 #define CODEMEMSIZE	(64*1024)
 #define CMDMEMSIZE	(16*1024)
 #define DYNCMDMEMSIZE	(128*1024*1024)
 #define DATAMEMSIZE	(1*1024*1024)
 
 static DkDevice g_device;
+static DkQueue g_render_queue;
+static DkMemBlock g_notification_region_memblock;
+static DisplayQueueControlBlock *g_display_queue;
 static DkMemBlock g_code_memblock;
 static uint32_t g_code_mem_offset;
-static DkMemBlock g_notification_region_memblock;
 static DkShader g_vertexShader;
 static DkShader g_fragmentShader;
+
+static int SceGxmDisplayQueue_thread(SceSize args, void *argp);
 
 static void load_shader_memory(DkMemBlock memblock, DkShader *shader, uint32_t *offset, const void *data, uint32_t size)
 {
@@ -175,39 +199,84 @@ static void dk_debug_callback(void *userData, const char *context, DkResult resu
 
 int sceGxmInitialize(const SceGxmInitializeParams *params)
 {
-	DkDeviceMaker deviceMaker;
+	DkDeviceMaker device_maker;
+	DkQueueMaker queue_maker;
 	DkMemBlockMaker memblock_maker;
+	uint32_t display_queue_num_entries;
 
 	if (g_gxm_initialized)
 		return SCE_GXM_ERROR_ALREADY_INITIALIZED;
 
-	dkDeviceMakerDefaults(&deviceMaker);
-	deviceMaker.userData = NULL;
-	deviceMaker.cbDebug = dk_debug_callback;
-	g_device = dkDeviceCreate(&deviceMaker);
+	/* Initialize device */
+	dkDeviceMakerDefaults(&device_maker);
+	device_maker.userData = NULL;
+	device_maker.cbDebug = dk_debug_callback;
+	g_device = dkDeviceCreate(&device_maker);
 
-	dkMemBlockMakerDefaults(&memblock_maker, g_device, CODEMEMSIZE);
-	memblock_maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Code;
-	g_code_memblock = dkMemBlockCreate(&memblock_maker);
+	/* Create graphics queue */
+	dkQueueMakerDefaults(&queue_maker, g_device);
+	queue_maker.flags = DkQueueFlags_Graphics;
+	g_render_queue = dkQueueCreate(&queue_maker);
 
+	/* Create memory block for the "notification region" */
 	dkMemBlockMakerDefaults(&memblock_maker, g_device,
 			       ALIGN(SCE_GXM_NOTIFICATION_COUNT * sizeof(uint32_t), DK_MEMBLOCK_ALIGNMENT));
 	memblock_maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuUncached;
 	g_notification_region_memblock = dkMemBlockCreate(&memblock_maker);
 
+	/* Allocate and initialize the display queue, and its worker thread */
+	display_queue_num_entries = next_pow2(params->displayQueueMaxPendingCount + 1);
+	g_display_queue = malloc(sizeof(DisplayQueueControlBlock) +
+			         (sizeof(DisplayQueueEntry) + params->displayQueueCallbackDataSize) *
+				 display_queue_num_entries);
+	assert(g_display_queue);
+	g_display_queue->head = 0;
+	g_display_queue->tail = 0;
+	g_display_queue->num_entries = display_queue_num_entries;
+	g_display_queue->entries = (DisplayQueueEntry *)((char *)g_display_queue + sizeof(DisplayQueueControlBlock));
+	g_display_queue->display_queue_max_pending_count = params->displayQueueMaxPendingCount;
+	g_display_queue->display_queue_callback = params->displayQueueCallback;
+	g_display_queue->display_queue_callback_data_size = params->displayQueueCallbackDataSize;
+	g_display_queue->exit_thread = 0;
+	g_display_queue->thid = sceKernelCreateThread("SceGxmDisplayQueue", SceGxmDisplayQueue_thread,
+						      64, 0x1000, 0, 0, NULL);
+	assert(g_display_queue->thid > 0);
+
+	for (uint32_t i = 0; i < display_queue_num_entries; i++) {
+		g_display_queue->entries[i].callback_data = (char *)g_display_queue->entries +
+			(sizeof(DisplayQueueEntry) * display_queue_num_entries) +
+			i * params->displayQueueCallbackDataSize;
+	}
+
+	ueventCreate(&g_display_queue->ready_evflag, true);
+	ueventCreate(&g_display_queue->pending_evflag, true);
+
+	sceKernelStartThread(g_display_queue->thid, sizeof(g_display_queue), &g_display_queue);
+
+	/* Create memory block for the shader code */
+	dkMemBlockMakerDefaults(&memblock_maker, g_device, CODEMEMSIZE);
+	memblock_maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Code;
+	g_code_memblock = dkMemBlockCreate(&memblock_maker);
+
+	/* Load shaders */
 	g_code_mem_offset = 0;
 	load_shader_memory(g_code_memblock, &g_vertexShader, &g_code_mem_offset, basic_vsh_dksh, basic_vsh_dksh_size);
 	load_shader_memory(g_code_memblock, &g_fragmentShader, &g_code_mem_offset, color_fsh_dksh, color_fsh_dksh_size);
 
-	g_gxm_init_params = *params;
 	g_gxm_initialized = true;
 	return 0;
 }
 
 int sceGxmTerminate()
 {
-	dkMemBlockDestroy(g_notification_region_memblock);
+	g_display_queue->exit_thread = 1;
+	ueventSignal(&g_display_queue->pending_evflag);
+	sceKernelWaitThreadEnd(g_display_queue->thid, NULL, NULL);
+
+	free(g_display_queue);
 	dkMemBlockDestroy(g_code_memblock);
+	dkMemBlockDestroy(g_notification_region_memblock);
+	dkQueueDestroy(g_render_queue);
 	dkDeviceDestroy(g_device);
 	g_gxm_initialized = false;
 	return 0;
@@ -217,7 +286,6 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 {
 	DkMemBlockMaker memblock_maker;
 	DkCmdBufMaker cmdbuf_maker;
-	DkQueueMaker queue_maker;
 	SceGxmContext *ctx = params->hostMem;
 
 	if (params->hostMemSize < sizeof(SceGxmContext))
@@ -225,11 +293,6 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 
 	memset(ctx, 0, sizeof(*ctx));
 	ctx->params = *params;
-
-	/* Create graphics queue */
-	dkQueueMakerDefaults(&queue_maker, g_device);
-	queue_maker.flags = DkQueueFlags_Graphics;
-	ctx->render_queue = dkQueueCreate(&queue_maker);
 
 	/* Create backing storage buffer for the main command buffer */
 	dkMemBlockMakerDefaults(&memblock_maker, g_device, params->vdmRingBufferMemSize);
@@ -262,24 +325,43 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 
 int sceGxmDestroyContext(SceGxmContext *context)
 {
-	dkQueueWaitIdle(context->render_queue);
+	dkQueueWaitIdle(g_render_queue);
 
 	dkMemBlockDestroy(context->vertex_ringbuf.memblock);
 	dkCmdBufDestroy(context->cmdbuf);
 	dkMemBlockDestroy(context->cmdbuf_memblock);
-	dkQueueDestroy(context->render_queue);
 
 	return 0;
 }
 
 void sceGxmFinish(SceGxmContext *context)
 {
-	dkQueueWaitIdle(context->render_queue);
+	dkQueueWaitIdle(g_render_queue);
 }
 
 volatile unsigned int *sceGxmGetNotificationRegion(void)
 {
 	return dkMemBlockGetCpuAddr(g_notification_region_memblock);
+}
+
+int sceGxmSyncObjectCreate(SceGxmSyncObject **syncObject)
+{
+	SceGxmSyncObject *sync_object;
+
+	sync_object = malloc(sizeof(*sync_object));
+	if (!sync_object)
+		return SCE_KERNEL_ERROR_NO_MEMORY;
+
+	memset(sync_object, 0, sizeof(*sync_object));
+	*syncObject = sync_object;
+
+	return 0;
+}
+
+int sceGxmSyncObjectDestroy(SceGxmSyncObject *syncObject)
+{
+	free(syncObject);
+	return 0;
 }
 
 int sceGxmNotificationWait(const SceGxmNotification *notification)
@@ -293,7 +375,7 @@ int sceGxmNotificationWait(const SceGxmNotification *notification)
 	dkVariableInitialize(&variable, g_notification_region_memblock, offset);
 
 	while (dkVariableRead(&variable) != notification->value)
-		svcSleepThread(10 * 1000); // TODO: Wait for a GPU event!
+		dkQueueWaitIdle(g_render_queue);
 
 	return 0;
 }
@@ -483,8 +565,6 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 		color_surface_inner->strideInPixels,
 		dkMemBlockGetCpuAddr(color_surface_block->memblock));
 
-	// memset(dkMemBlockGetCpuAddr(color_surface_block->memblock), 0, color_surface_inner->strideInPixels * 32);
-
 	dkImageLayoutMakerDefaults(&image_layout_maker, g_device);
 	image_layout_maker.flags = DkImageFlags_UsageRender | DkImageFlags_PitchLinear;
 	image_layout_maker.format = DkImageFormat_RGBA8_Unorm;
@@ -513,6 +593,9 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 	dkCmdBufBindRasterizerState(context->cmdbuf, &rasterizerState);
 	dkCmdBufBindColorState(context->cmdbuf, &colorState);
 	dkCmdBufBindColorWriteState(context->cmdbuf, &colorWriteState);
+
+	if (fragmentSyncObject)
+		dkCmdBufWaitFence(context->cmdbuf, &fragmentSyncObject->fence);
 
 	context->vertex_ringbuf.head = 0;
 	context->scene.valid = true;
@@ -553,25 +636,74 @@ int sceGxmEndScene(SceGxmContext *context, const SceGxmNotification *vertexNotif
 	}
 
 	cmd_list = dkCmdBufFinishList(context->cmdbuf);
-	dkQueueSubmitCommands(context->render_queue, cmd_list);
-
-	dkQueueFlush(context->render_queue);
-	dkQueueWaitIdle(context->render_queue);
+	dkQueueSubmitCommands(g_render_queue, cmd_list);
 
 	context->scene.valid = false;
 
 	return 0;
 }
 
+static int SceGxmDisplayQueue_thread(SceSize args, void *argp)
+{
+	DisplayQueueControlBlock *queue = *(DisplayQueueControlBlock **)argp;
+	DisplayQueueEntry *entry;
+
+	ueventSignal(&queue->ready_evflag);
+
+	while (!queue->exit_thread) {
+		while (CIRC_CNT(queue->head, queue->tail, queue->num_entries) > 0) {
+			if (queue->exit_thread)
+				break;
+
+			/* Pop fence, wait for the rendering to finish, and call the callback */
+			entry = &queue->entries[queue->tail];
+			dkFenceWait(entry->fence, -1);
+
+			queue->display_queue_callback(entry->callback_data);
+
+			queue->tail = (queue->tail + 1) & (queue->num_entries - 1);
+			ueventSignal(&queue->ready_evflag);
+		}
+
+		if (queue->exit_thread)
+			break;
+
+		waitSingle(waiterForUEvent(&queue->pending_evflag), -1);
+	}
+
+	return 0;
+}
+
 int sceGxmDisplayQueueAddEntry(SceGxmSyncObject *oldBuffer, SceGxmSyncObject *newBuffer, const void *callbackData)
 {
-	LOG("sceGxmDisplayQueueAddEntry: oldBuffer: %p, newBuffer: %p", oldBuffer, newBuffer);
+	DisplayQueueControlBlock *queue = g_display_queue;
+
+	dkQueueSignalFence(g_render_queue, &newBuffer->fence, true);
+	dkQueueFlush(g_render_queue);
+
+	while (CIRC_CNT(queue->head, queue->tail, queue->num_entries) ==
+	       queue->display_queue_max_pending_count) {
+		waitSingle(waiterForUEvent(&queue->ready_evflag), -1);
+	}
+
+	/* Push new fence and callback data to the display queue */
+	queue->entries[queue->head].fence = &newBuffer->fence;
+	memcpy(queue->entries[queue->head].callback_data, callbackData,
+	       queue->display_queue_callback_data_size);
+	queue->head = (queue->head + 1) & (queue->num_entries - 1);
+
+	ueventSignal(&queue->pending_evflag);
 
 	return 0;
 }
 
 int sceGxmDisplayQueueFinish(void)
 {
+	DisplayQueueControlBlock *queue = g_display_queue;
+
+	while (CIRC_CNT(queue->head, queue->tail, queue->num_entries) > 0)
+		waitSingle(waiterForUEvent(&queue->ready_evflag), -1);
+
 	return 0;
 }
 
@@ -719,6 +851,8 @@ void SceGxm_register(void)
 		{0x0733D8AE, sceGxmFinish},
 		{0x8BDE825A, sceGxmGetNotificationRegion},
 		{0x9F448E79, sceGxmNotificationWait},
+		{0x6A6013E1, sceGxmSyncObjectCreate},
+		{0x889AE88C, sceGxmSyncObjectDestroy},
 		{0x05032658, sceGxmShaderPatcherCreate},
 		{0xEAA5B100, sceGxmShaderPatcherDestroy},
 		{0x2B528462, sceGxmShaderPatcherRegisterProgram},
