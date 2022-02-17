@@ -13,6 +13,8 @@
 #include "basic_vsh_dksh.h"
 #include "color_fsh_dksh.h"
 
+#define SCE_GXM_NOTIFICATION_COUNT	512
+
 #define MAX_GXM_MAPPED_MEMORY_BLOCKS	256
 
 typedef struct SceGxmContext {
@@ -149,8 +151,9 @@ typedef struct {
 #define DATAMEMSIZE	(1*1024*1024)
 
 static DkDevice g_device;
-static DkMemBlock g_codeMemBlock;
-static uint32_t g_codeMemOffset;
+static DkMemBlock g_code_memblock;
+static uint32_t g_code_mem_offset;
+static DkMemBlock g_notification_region_memblock;
 static DkShader g_vertexShader;
 static DkShader g_fragmentShader;
 
@@ -158,31 +161,43 @@ static void load_shader_memory(DkMemBlock memblock, DkShader *shader, uint32_t *
 {
 	DkShaderMaker shader_maker;
 
-	memcpy((char *)dkMemBlockGetCpuAddr(g_codeMemBlock) + *offset, data, size);
+	memcpy((char *)dkMemBlockGetCpuAddr(g_code_memblock) + *offset, data, size);
 	dkShaderMakerDefaults(&shader_maker, memblock, *offset);
 	dkShaderInitialize(shader, &shader_maker);
 
 	*offset += ALIGN(size, DK_SHADER_CODE_ALIGNMENT);
 }
 
+static void dk_debug_callback(void *userData, const char *context, DkResult result, const char *message)
+{
+	LOG("deko3d debug callback: context: %s, message: %s, result %d", context, message, result);
+}
+
 int sceGxmInitialize(const SceGxmInitializeParams *params)
 {
 	DkDeviceMaker deviceMaker;
-	DkMemBlockMaker memBlockMaker;
+	DkMemBlockMaker memblock_maker;
 
 	if (g_gxm_initialized)
 		return SCE_GXM_ERROR_ALREADY_INITIALIZED;
 
 	dkDeviceMakerDefaults(&deviceMaker);
+	deviceMaker.userData = NULL;
+	deviceMaker.cbDebug = dk_debug_callback;
 	g_device = dkDeviceCreate(&deviceMaker);
 
-	dkMemBlockMakerDefaults(&memBlockMaker, g_device, CODEMEMSIZE);
-	memBlockMaker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Code;
-	g_codeMemBlock = dkMemBlockCreate(&memBlockMaker);
+	dkMemBlockMakerDefaults(&memblock_maker, g_device, CODEMEMSIZE);
+	memblock_maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Code;
+	g_code_memblock = dkMemBlockCreate(&memblock_maker);
 
-	g_codeMemOffset = 0;
-	load_shader_memory(g_codeMemBlock, &g_vertexShader, &g_codeMemOffset, basic_vsh_dksh, basic_vsh_dksh_size);
-	load_shader_memory(g_codeMemBlock, &g_fragmentShader, &g_codeMemOffset, color_fsh_dksh, color_fsh_dksh_size);
+	dkMemBlockMakerDefaults(&memblock_maker, g_device,
+			       ALIGN(SCE_GXM_NOTIFICATION_COUNT * sizeof(uint32_t), DK_MEMBLOCK_ALIGNMENT));
+	memblock_maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuUncached;
+	g_notification_region_memblock = dkMemBlockCreate(&memblock_maker);
+
+	g_code_mem_offset = 0;
+	load_shader_memory(g_code_memblock, &g_vertexShader, &g_code_mem_offset, basic_vsh_dksh, basic_vsh_dksh_size);
+	load_shader_memory(g_code_memblock, &g_fragmentShader, &g_code_mem_offset, color_fsh_dksh, color_fsh_dksh_size);
 
 	g_gxm_init_params = *params;
 	g_gxm_initialized = true;
@@ -191,7 +206,8 @@ int sceGxmInitialize(const SceGxmInitializeParams *params)
 
 int sceGxmTerminate()
 {
-	dkMemBlockDestroy(g_codeMemBlock);
+	dkMemBlockDestroy(g_notification_region_memblock);
+	dkMemBlockDestroy(g_code_memblock);
 	dkDeviceDestroy(g_device);
 	g_gxm_initialized = false;
 	return 0;
@@ -259,6 +275,27 @@ int sceGxmDestroyContext(SceGxmContext *context)
 void sceGxmFinish(SceGxmContext *context)
 {
 	dkQueueWaitIdle(context->render_queue);
+}
+
+volatile unsigned int *sceGxmGetNotificationRegion(void)
+{
+	return dkMemBlockGetCpuAddr(g_notification_region_memblock);
+}
+
+int sceGxmNotificationWait(const SceGxmNotification *notification)
+{
+	DkVariable variable;
+	uint32_t offset = (uintptr_t)notification->address -
+			  (uintptr_t)dkMemBlockGetCpuAddr(g_notification_region_memblock);
+
+	assert(offset < SCE_GXM_NOTIFICATION_COUNT * sizeof(uint32_t));
+
+	dkVariableInitialize(&variable, g_notification_region_memblock, offset);
+
+	while (dkVariableRead(&variable) != notification->value)
+		svcSleepThread(10 * 1000); // TODO: Wait for a GPU event!
+
+	return 0;
 }
 
 int sceGxmShaderPatcherCreate(const SceGxmShaderPatcherParams *params,
@@ -441,8 +478,8 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 	if (!color_surface_block)
 		return SCE_GXM_ERROR_INVALID_VALUE;
 
-	LOG("sceGxmBeginScene to renderTarget %p, w: %ld, h: %ld, stride: %ld, CPU addr: %p",
-		renderTarget, color_surface_inner->width, color_surface_inner->height,
+	LOG("sceGxmBeginScene to renderTarget %p, fragmentSyncObject: %p, w: %ld, h: %ld, stride: %ld, CPU addr: %p",
+		renderTarget, fragmentSyncObject, color_surface_inner->width, color_surface_inner->height,
 		color_surface_inner->strideInPixels,
 		dkMemBlockGetCpuAddr(color_surface_block->memblock));
 
@@ -487,28 +524,54 @@ int sceGxmEndScene(SceGxmContext *context, const SceGxmNotification *vertexNotif
 		   const SceGxmNotification *fragmentNotification)
 {
 	DkCmdList cmd_list;
+	DkVariable variable;
+	uint32_t offset;
 
 	LOG("sceGxmEndScene");
 
 	if (!context->scene.valid)
 		return SCE_GXM_ERROR_NOT_WITHIN_SCENE;
 
+	if (vertexNotification) {
+		offset = (uintptr_t)vertexNotification->address -
+			 (uintptr_t)dkMemBlockGetCpuAddr(g_notification_region_memblock);
+		assert(offset < SCE_GXM_NOTIFICATION_COUNT * sizeof(uint32_t));
+
+		dkVariableInitialize(&variable, g_notification_region_memblock, offset);
+		dkCmdBufSignalVariable(context->cmdbuf, &variable, DkVarOp_Set,
+				       vertexNotification->value, DkPipelinePos_Rasterizer);
+	}
+
+	if (fragmentNotification) {
+		offset = (uintptr_t)fragmentNotification->address -
+			 (uintptr_t)dkMemBlockGetCpuAddr(g_notification_region_memblock);
+		assert(offset < SCE_GXM_NOTIFICATION_COUNT * sizeof(uint32_t));
+
+		dkVariableInitialize(&variable, g_notification_region_memblock, offset);
+		dkCmdBufSignalVariable(context->cmdbuf, &variable, DkVarOp_Set,
+				       fragmentNotification->value, DkPipelinePos_Bottom);
+	}
+
 	cmd_list = dkCmdBufFinishList(context->cmdbuf);
 	dkQueueSubmitCommands(context->render_queue, cmd_list);
 
-	//DkFence fence;
-	//dkQueueWaitFence(context->render_queue, &fence);
-	//dkFenceWait(&fence, INT64_MAX);
-	//svcSleepThread(100 * 1000 * 1000);
-
-	//dkQueueFlush(context->render_queue);
+	dkQueueFlush(context->render_queue);
 	dkQueueWaitIdle(context->render_queue);
-
-	//dkQueuePresentImage(context->render_queue, swapchain, slot);
-	//dkSwapchainDestroy(swapchain);
 
 	context->scene.valid = false;
 
+	return 0;
+}
+
+int sceGxmDisplayQueueAddEntry(SceGxmSyncObject *oldBuffer, SceGxmSyncObject *newBuffer, const void *callbackData)
+{
+	LOG("sceGxmDisplayQueueAddEntry: oldBuffer: %p, newBuffer: %p", oldBuffer, newBuffer);
+
+	return 0;
+}
+
+int sceGxmDisplayQueueFinish(void)
+{
 	return 0;
 }
 
@@ -654,6 +717,8 @@ void SceGxm_register(void)
 		{0xE84CE5B4, sceGxmCreateContext},
 		{0xEDDC5FB2, sceGxmDestroyContext},
 		{0x0733D8AE, sceGxmFinish},
+		{0x8BDE825A, sceGxmGetNotificationRegion},
+		{0x9F448E79, sceGxmNotificationWait},
 		{0x05032658, sceGxmShaderPatcherCreate},
 		{0xEAA5B100, sceGxmShaderPatcherDestroy},
 		{0x2B528462, sceGxmShaderPatcherRegisterProgram},
@@ -668,6 +733,8 @@ void SceGxm_register(void)
 		{0xED0F6E25, sceGxmColorSurfaceInit},
 		{0x8734FF4E, sceGxmBeginScene},
 		{0xFE300E2F, sceGxmEndScene},
+		{0xEC5C26B5, sceGxmDisplayQueueAddEntry},
+		{0xB98C5B0D, sceGxmDisplayQueueFinish},
 		{0x31FF8ABD, sceGxmSetVertexProgram},
 		{0xAD2F48D9, sceGxmSetFragmentProgram},
 		{0x895DF2E9, sceGxmSetVertexStream},
