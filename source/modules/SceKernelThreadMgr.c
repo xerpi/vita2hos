@@ -104,7 +104,7 @@ static void NORETURN thread_entry_wrapper(void *arg)
 
 	threadTlsSet(g_vita_thread_info_tls_slot_id, ti);
 
-	ret = ti->entry(ti->args, ti->argp);
+	ret = ti->entry(ti->arglen, ti->argp);
 
 	LOG("Thread 0x%x returned with: 0x%x", ti->thid, ret);
 
@@ -152,8 +152,14 @@ static int start_thread(SceUID thid, SceSize arglen, void *argp)
 	if (!ti)
 		return SCE_KERNEL_ERROR_UNKNOWN_THREAD_ID;
 
-	ti->args = arglen;
-	ti->argp = argp;
+	if (arglen && argp) {
+		ti->argp = malloc(arglen);
+		if (!ti->argp)
+			return SCE_KERNEL_ERROR_NO_MEMORY;
+
+		memcpy(ti->argp, argp, arglen);
+		ti->arglen = arglen;
+	}
 
 	res = threadStart(&ti->thread);
 	if (R_FAILED(res)) {
@@ -185,6 +191,7 @@ int sceKernelDeleteThread(SceUID thid)
 		return SCE_KERNEL_ERROR_THREAD_ERROR;
 	}
 
+	free(ti->argp);
 	free(ti->vita_tls);
 	thread_info_release(ti);
 

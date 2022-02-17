@@ -9,7 +9,7 @@ typedef struct {
 	SceUID thid;
 	char name[32];
 	SceKernelThreadEntry entry;
-	int args;
+	SceSize arglen;
 	void *argp;
 	int return_status;
 	void **vita_tls;
