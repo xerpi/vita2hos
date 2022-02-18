@@ -5,7 +5,15 @@
 
 bool log_to_fb_console;
 
-void __attribute__ ((format (printf, 1, 2))) LOG(const char *fmt, ...)
+void LOGSTR(const char *str)
+{
+	svcOutputDebugString(str, strlen(str));
+
+	if (log_to_fb_console)
+		puts(str);
+}
+
+void __attribute__((format(printf, 1, 2))) LOG(const char *fmt, ...)
 {
 	char buf[256];
 	va_list argptr;

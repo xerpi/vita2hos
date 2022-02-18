@@ -194,7 +194,16 @@ static void load_shader_memory(DkMemBlock memblock, DkShader *shader, uint32_t *
 
 static void dk_debug_callback(void *userData, const char *context, DkResult result, const char *message)
 {
-	LOG("deko3d debug callback: context: %s, message: %s, result %d", context, message, result);
+	char description[256];
+
+	if (result == DkResult_Success) {
+		LOG("deko3d debug callback: context: %s, message: %s, result %d",
+		    context, message, result);
+	} else {
+		snprintf(description, sizeof(description), "context: %s, message: %s, result %d",
+		         context, message, result);
+		fatal_error("deko3d fatal error.", description);
+	}
 }
 
 int sceGxmInitialize(const SceGxmInitializeParams *params)
@@ -294,7 +303,7 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 	memset(ctx, 0, sizeof(*ctx));
 	ctx->params = *params;
 
-	/* Create backing storage buffer for the main command buffer */
+	/* Map the passed backing storage buffer for the main command buffer */
 	dkMemBlockMakerDefaults(&memblock_maker, g_device, params->vdmRingBufferMemSize);
 	memblock_maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached;
 	memblock_maker.storage = params->vdmRingBufferMem;
@@ -309,7 +318,7 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 	/* Assing the backing storage buffer to the main command buffer */
 	dkCmdBufAddMemory(ctx->cmdbuf, ctx->cmdbuf_memblock, 0, ctx->params.vdmRingBufferMemSize);
 
-	/* Create ringbuffer for generic vertex data and vertex default uniform buffer reservations */
+	/* Map the passed vertex ringbuffer for vertex default uniform buffer reservations */
 	dkMemBlockMakerDefaults(&memblock_maker, g_device, params->vertexRingBufferMemSize);
 	memblock_maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached;
 	memblock_maker.storage = params->vertexRingBufferMem;

@@ -121,3 +121,25 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
+void NORETURN fatal_error(const char *dialog_message, const char *fullscreen_message)
+{
+	extern u32 __nx_applet_exit_mode;
+	ErrorApplicationConfig c;
+
+	errorApplicationCreate(&c, dialog_message, fullscreen_message);
+	errorApplicationShow(&c);
+
+	__nx_applet_exit_mode = 1;
+	exit(1);
+}
+
+void NORETURN __assert_func(const char *file, int line, const char *func, const char *failedexpr)
+{
+	char message[256];
+
+	snprintf(message, sizeof(message), "assertion \"%s\" failed: file \"%s\", line %d%s%s\n",
+		failedexpr, file, line, func ? ", function: " : "", func ? func : "");
+
+	LOGSTR(message);
+	fatal_error("Assertion failed.", message);
+}

@@ -31,6 +31,8 @@
 
 extern bool log_to_fb_console;
 
-void __attribute__ ((format (printf, 1, 2))) LOG(const char *fmt, ...);
+void LOGSTR(const char *str);
+void __attribute__((format(printf, 1, 2))) LOG(const char *fmt, ...);
+void NORETURN fatal_error(const char *dialog_message, const char *fullscreen_message);
 
 #endif
