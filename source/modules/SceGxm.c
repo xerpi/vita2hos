@@ -26,7 +26,15 @@ typedef struct SceGxmContext {
 	struct {
 		DkMemBlock memblock;
 		uint32_t head;
+		uint32_t tail;
+		uint32_t size;
 	} vertex_ringbuf;
+	struct {
+		DkMemBlock memblock;
+		uint32_t head;
+		uint32_t tail;
+		uint32_t size;
+	} fragment_ringbuf;
 	const SceGxmVertexProgram *vertex_program;
 	const SceGxmFragmentProgram *fragment_program;
 	struct {
@@ -325,8 +333,21 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 	ctx->vertex_ringbuf.memblock = dkMemBlockCreate(&memblock_maker);
 	assert(ctx->vertex_ringbuf.memblock);
 	assert(params->vertexRingBufferMem == dkMemBlockGetCpuAddr(ctx->vertex_ringbuf.memblock));
-
 	ctx->vertex_ringbuf.head = 0;
+	ctx->vertex_ringbuf.tail = 0;
+	ctx->vertex_ringbuf.size = params->vertexRingBufferMemSize;
+
+	/* Map the passed fragment ringbuffer for fragment default uniform buffer reservations */
+	dkMemBlockMakerDefaults(&memblock_maker, g_device, params->fragmentRingBufferMemSize);
+	memblock_maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached;
+	memblock_maker.storage = params->fragmentRingBufferMem;
+	ctx->fragment_ringbuf.memblock = dkMemBlockCreate(&memblock_maker);
+	assert(ctx->fragment_ringbuf.memblock);
+	assert(params->fragmentRingBufferMem == dkMemBlockGetCpuAddr(ctx->fragment_ringbuf.memblock));
+	ctx->fragment_ringbuf.head = 0;
+	ctx->fragment_ringbuf.tail = 0;
+	ctx->fragment_ringbuf.size = params->fragmentRingBufferMemSize;
+
 	*context = ctx;
 
 	return 0;
@@ -336,6 +357,7 @@ int sceGxmDestroyContext(SceGxmContext *context)
 {
 	dkQueueWaitIdle(g_render_queue);
 
+	dkMemBlockDestroy(context->fragment_ringbuf.memblock);
 	dkMemBlockDestroy(context->vertex_ringbuf.memblock);
 	dkCmdBufDestroy(context->cmdbuf);
 	dkMemBlockDestroy(context->cmdbuf_memblock);
