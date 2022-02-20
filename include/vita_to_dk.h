@@ -1,15 +1,49 @@
-#ifndef GXM_TO_DK_H
-#define GXM_TO_DK_H
+#ifndef VITA_TO_DK_H
+#define VITA_TO_DK_H
 
 #include <assert.h>
+#include <psp2/display.h>
 #include <psp2/gxm.h>
 #include <deko3d.h>
 
 #define SCE_GXM_TEXTURE_BASE_FORMAT_MASK 0x9f000000U
 
-static inline uint32_t gxm_color_format_bytes_per_pixel(SceGxmColorFormat colorFormat)
+static inline uint32_t display_pixelformat_bytes_per_pixel(SceDisplayPixelFormat format)
 {
-	switch (colorFormat & SCE_GXM_TEXTURE_BASE_FORMAT_MASK) {
+	switch (format) {
+	case SCE_DISPLAY_PIXELFORMAT_A8B8G8R8:
+		return 4;
+	default:
+		assert(0);
+	}
+}
+
+static inline DkImageFormat display_pixelformat_to_dk_image_format(SceDisplayPixelFormat format)
+{
+	switch (format) {
+	case SCE_DISPLAY_PIXELFORMAT_A8B8G8R8:
+		return DkImageFormat_RGBA8_Unorm;
+	default:
+		assert(0);
+	}
+}
+
+static inline uint32_t gxm_color_surface_type_to_dk_image_flags(SceGxmColorSurfaceType type)
+{
+	switch (type) {
+	case SCE_GXM_COLOR_SURFACE_LINEAR:
+		return DkImageFlags_PitchLinear;
+	case SCE_GXM_COLOR_SURFACE_TILED:
+	case SCE_GXM_COLOR_SURFACE_SWIZZLED:
+		return DkImageFlags_BlockLinear | DkImageFlags_HwCompression;
+	default:
+		assert(0);
+	}
+}
+
+static inline uint32_t gxm_color_format_bytes_per_pixel(SceGxmColorFormat format)
+{
+	switch (format & SCE_GXM_TEXTURE_BASE_FORMAT_MASK) {
 	case SCE_GXM_COLOR_BASE_FORMAT_U8:
 	case SCE_GXM_COLOR_BASE_FORMAT_S8:
 		return 1;
@@ -41,6 +75,16 @@ static inline uint32_t gxm_color_format_bytes_per_pixel(SceGxmColorFormat colorF
 	case SCE_GXM_COLOR_BASE_FORMAT_F16F16F16F16:
 	case SCE_GXM_COLOR_BASE_FORMAT_F32F32:
 		return 8;
+	default:
+		assert(0);
+	}
+}
+
+static inline DkImageFormat gxm_color_format_to_dk_image_format(SceGxmColorFormat format)
+{
+	switch (format & SCE_GXM_TEXTURE_BASE_FORMAT_MASK) {
+	case SCE_GXM_COLOR_FORMAT_U8U8U8U8_ABGR:
+		return DkImageFormat_RGBA8_Unorm;
 	default:
 		assert(0);
 	}
@@ -144,9 +188,9 @@ static inline DkPrimitive gxm_to_dk_primitive(SceGxmPrimitiveType prim)
 	}
 }
 
-static inline DkIdxFormat gxm_to_dk_idx_format(SceGxmIndexFormat indexType)
+static inline DkIdxFormat gxm_to_dk_idx_format(SceGxmIndexFormat format)
 {
-	switch (indexType) {
+	switch (format) {
 	case SCE_GXM_INDEX_FORMAT_U16:
 		return DkIdxFormat_Uint16;
 	case SCE_GXM_INDEX_FORMAT_U32:
@@ -155,5 +199,7 @@ static inline DkIdxFormat gxm_to_dk_idx_format(SceGxmIndexFormat indexType)
 		assert(0);
 	}
 }
+
+
 
 #endif

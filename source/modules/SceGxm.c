@@ -5,8 +5,9 @@
 #include <psp2/kernel/threadmgr.h>
 #include <psp2/gxm.h>
 #include "SceGxm.h"
+#include "SceSysmem.h"
 #include "circ_buf.h"
-#include "gxm_to_dk.h"
+#include "vita_to_dk.h"
 #include "module.h"
 #include "protected_bitset.h"
 #include "utils.h"
@@ -132,14 +133,8 @@ typedef struct {
 static_assert(sizeof(SceGxmColorSurfaceInner) == sizeof(SceGxmColorSurface), "Incorrect size");
 
 typedef struct {
-	uint32_t index;
-	DkMemBlock memblock;
-	void *base;
-	SceSize size;
-} GxmMappedMemoryBlock;
-
-typedef struct {
-	DkFence *fence;
+	DkFence new_fence;
+	DkFence old_fence;
 	void *callback_data;
 } DisplayQueueEntry;
 
@@ -157,13 +152,6 @@ typedef struct {
 	UEvent pending_evflag;
 } DisplayQueueControlBlock;
 
-DECL_PROTECTED_BITSET(GxmMappedMemoryBlock, gxm_mapped_memory_blocks, MAX_GXM_MAPPED_MEMORY_BLOCKS)
-DECL_PROTECTED_BITSET_ALLOC(gxm_mapped_memory_block_alloc, gxm_mapped_memory_blocks, GxmMappedMemoryBlock)
-DECL_PROTECTED_BITSET_RELEASE(gxm_mapped_memory_block_release, gxm_mapped_memory_blocks, GxmMappedMemoryBlock)
-DECL_PROTECTED_BITSET_GET_CMP(gxm_mapped_memory_block_get, gxm_mapped_memory_blocks, GxmMappedMemoryBlock, const void *, base,
-			      base >= g_gxm_mapped_memory_blocks[index].base &&
-			      base < (g_gxm_mapped_memory_blocks[index].base + g_gxm_mapped_memory_blocks[index].size))
-
 static bool g_gxm_initialized;
 
 /* Deko3D */
@@ -178,7 +166,7 @@ typedef struct {
 #define DYNCMDMEMSIZE	(128*1024*1024)
 #define DATAMEMSIZE	(1*1024*1024)
 
-static DkDevice g_device;
+static DkDevice g_dk_device;
 static DkQueue g_render_queue;
 static DkMemBlock g_notification_region_memblock;
 static DisplayQueueControlBlock *g_display_queue;
@@ -200,23 +188,8 @@ static void load_shader_memory(DkMemBlock memblock, DkShader *shader, uint32_t *
 	*offset += ALIGN(size, DK_SHADER_CODE_ALIGNMENT);
 }
 
-static void dk_debug_callback(void *userData, const char *context, DkResult result, const char *message)
-{
-	char description[256];
-
-	if (result == DkResult_Success) {
-		LOG("deko3d debug callback: context: %s, message: %s, result %d",
-		    context, message, result);
-	} else {
-		snprintf(description, sizeof(description), "context: %s, message: %s, result %d",
-		         context, message, result);
-		fatal_error("deko3d fatal error.", description);
-	}
-}
-
 int sceGxmInitialize(const SceGxmInitializeParams *params)
 {
-	DkDeviceMaker device_maker;
 	DkQueueMaker queue_maker;
 	DkMemBlockMaker memblock_maker;
 	uint32_t display_queue_num_entries;
@@ -224,19 +197,13 @@ int sceGxmInitialize(const SceGxmInitializeParams *params)
 	if (g_gxm_initialized)
 		return SCE_GXM_ERROR_ALREADY_INITIALIZED;
 
-	/* Initialize device */
-	dkDeviceMakerDefaults(&device_maker);
-	device_maker.userData = NULL;
-	device_maker.cbDebug = dk_debug_callback;
-	g_device = dkDeviceCreate(&device_maker);
-
 	/* Create graphics queue */
-	dkQueueMakerDefaults(&queue_maker, g_device);
+	dkQueueMakerDefaults(&queue_maker, g_dk_device);
 	queue_maker.flags = DkQueueFlags_Graphics;
 	g_render_queue = dkQueueCreate(&queue_maker);
 
 	/* Create memory block for the "notification region" */
-	dkMemBlockMakerDefaults(&memblock_maker, g_device,
+	dkMemBlockMakerDefaults(&memblock_maker, g_dk_device,
 			       ALIGN(SCE_GXM_NOTIFICATION_COUNT * sizeof(uint32_t), DK_MEMBLOCK_ALIGNMENT));
 	memblock_maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuUncached;
 	g_notification_region_memblock = dkMemBlockCreate(&memblock_maker);
@@ -271,7 +238,7 @@ int sceGxmInitialize(const SceGxmInitializeParams *params)
 	sceKernelStartThread(g_display_queue->thid, sizeof(g_display_queue), &g_display_queue);
 
 	/* Create memory block for the shader code */
-	dkMemBlockMakerDefaults(&memblock_maker, g_device, CODEMEMSIZE);
+	dkMemBlockMakerDefaults(&memblock_maker, g_dk_device, CODEMEMSIZE);
 	memblock_maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Code;
 	g_code_memblock = dkMemBlockCreate(&memblock_maker);
 
@@ -294,14 +261,13 @@ int sceGxmTerminate()
 	dkMemBlockDestroy(g_code_memblock);
 	dkMemBlockDestroy(g_notification_region_memblock);
 	dkQueueDestroy(g_render_queue);
-	dkDeviceDestroy(g_device);
+
 	g_gxm_initialized = false;
 	return 0;
 }
 
 int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **context)
 {
-	DkMemBlockMaker memblock_maker;
 	DkCmdBufMaker cmdbuf_maker;
 	SceGxmContext *ctx = params->hostMem;
 
@@ -311,37 +277,28 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 	memset(ctx, 0, sizeof(*ctx));
 	ctx->params = *params;
 
-	/* Map the passed backing storage buffer for the main command buffer */
-	dkMemBlockMakerDefaults(&memblock_maker, g_device, params->vdmRingBufferMemSize);
-	memblock_maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached;
-	memblock_maker.storage = params->vdmRingBufferMem;
-	ctx->cmdbuf_memblock = dkMemBlockCreate(&memblock_maker);
+	/* Get the passed backing storage buffer for the main command buffer */
+	ctx->cmdbuf_memblock = SceSysmem_get_dk_memblock_for_addr(params->vdmRingBufferMem);
 	assert(ctx->cmdbuf_memblock);
 
 	/* Create the command buffer */
-	dkCmdBufMakerDefaults(&cmdbuf_maker, g_device);
+	dkCmdBufMakerDefaults(&cmdbuf_maker, g_dk_device);
 	ctx->cmdbuf = dkCmdBufCreate(&cmdbuf_maker);
 	assert(ctx->cmdbuf);
 
 	/* Assing the backing storage buffer to the main command buffer */
 	dkCmdBufAddMemory(ctx->cmdbuf, ctx->cmdbuf_memblock, 0, ctx->params.vdmRingBufferMemSize);
 
-	/* Map the passed vertex ringbuffer for vertex default uniform buffer reservations */
-	dkMemBlockMakerDefaults(&memblock_maker, g_device, params->vertexRingBufferMemSize);
-	memblock_maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached;
-	memblock_maker.storage = params->vertexRingBufferMem;
-	ctx->vertex_ringbuf.memblock = dkMemBlockCreate(&memblock_maker);
+	/* Get the passed vertex ringbuffer for vertex default uniform buffer reservations */
+	ctx->vertex_ringbuf.memblock = SceSysmem_get_dk_memblock_for_addr(params->vertexRingBufferMem);
 	assert(ctx->vertex_ringbuf.memblock);
 	assert(params->vertexRingBufferMem == dkMemBlockGetCpuAddr(ctx->vertex_ringbuf.memblock));
 	ctx->vertex_ringbuf.head = 0;
 	ctx->vertex_ringbuf.tail = 0;
 	ctx->vertex_ringbuf.size = params->vertexRingBufferMemSize;
 
-	/* Map the passed fragment ringbuffer for fragment default uniform buffer reservations */
-	dkMemBlockMakerDefaults(&memblock_maker, g_device, params->fragmentRingBufferMemSize);
-	memblock_maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached;
-	memblock_maker.storage = params->fragmentRingBufferMem;
-	ctx->fragment_ringbuf.memblock = dkMemBlockCreate(&memblock_maker);
+	/* Get the passed fragment ringbuffer for fragment default uniform buffer reservations */
+	ctx->fragment_ringbuf.memblock = SceSysmem_get_dk_memblock_for_addr(params->fragmentRingBufferMem);
 	assert(ctx->fragment_ringbuf.memblock);
 	assert(params->fragmentRingBufferMem == dkMemBlockGetCpuAddr(ctx->fragment_ringbuf.memblock));
 	ctx->fragment_ringbuf.head = 0;
@@ -356,11 +313,7 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 int sceGxmDestroyContext(SceGxmContext *context)
 {
 	dkQueueWaitIdle(g_render_queue);
-
-	dkMemBlockDestroy(context->fragment_ringbuf.memblock);
-	dkMemBlockDestroy(context->vertex_ringbuf.memblock);
 	dkCmdBufDestroy(context->cmdbuf);
-	dkMemBlockDestroy(context->cmdbuf_memblock);
 
 	return 0;
 }
@@ -564,71 +517,80 @@ int sceGxmColorSurfaceInit(SceGxmColorSurface *surface, SceGxmColorFormat colorF
 	return 0;
 }
 
+static inline void dk_image_view_for_gxm_color_surface(DkImage *image, DkImageView *view, DkMemBlock block,
+						       const SceGxmColorSurfaceInner *surface)
+{
+	DkImageLayoutMaker maker;
+	DkImageLayout layout;
+	uint32_t offset;
+
+	dkImageLayoutMakerDefaults(&maker, g_dk_device);
+	maker.flags = gxm_color_surface_type_to_dk_image_flags(surface->surfaceType) |
+		      DkImageFlags_UsageRender | DkImageFlags_Usage2DEngine;
+	maker.format = gxm_color_format_to_dk_image_format(surface->colorFormat);
+	maker.dimensions[0] = surface->width;
+	maker.dimensions[1] = surface->height;
+	maker.pitchStride = surface->strideInPixels * gxm_color_format_bytes_per_pixel(surface->colorFormat);
+	dkImageLayoutInitialize(&layout, &maker);
+
+	offset = (uintptr_t)surface->data - (uintptr_t)dkMemBlockGetCpuAddr(block);
+	dkImageInitialize(image, &layout, block, offset);
+	dkImageViewDefaults(view, image);
+}
+
 int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 		     const SceGxmRenderTarget *renderTarget, const SceGxmValidRegion *validRegion,
 		     SceGxmSyncObject *vertexSyncObject, SceGxmSyncObject *fragmentSyncObject,
 		     const SceGxmColorSurface *colorSurface,
 		     const SceGxmDepthStencilSurface *depthStencil)
 {
-	DkImageLayoutMaker image_layout_maker;
-	DkImageLayout image_layout;
-	DkImageView image_view;
-	DkImage framebuffer;
+	DkMemBlock color_surface_block;
+	DkImage color_surface_image;
+	DkImageView color_surface_view;
+	DkRasterizerState rasterizer_state;
+	DkColorState color_state;
+	DkColorWriteState color_write_state;
 	DkViewport viewport = { 0.0f, 0.0f, (float)renderTarget->params.width, (float)renderTarget->params.height, 0.0f, 1.0f };
 	DkScissor scissor = { 0, 0, renderTarget->params.width, renderTarget->params.height };
 	DkShader const* shaders[] = { &g_vertexShader, &g_fragmentShader };
 	SceGxmColorSurfaceInner *color_surface_inner = (SceGxmColorSurfaceInner *)colorSurface;
-	GxmMappedMemoryBlock *color_surface_block;
-	uint32_t image_block_offset;
-	DkRasterizerState rasterizerState;
-	DkColorState colorState;
-	DkColorWriteState colorWriteState;
 
 	if (context->scene.valid)
 		return SCE_GXM_ERROR_WITHIN_SCENE;
 
-	color_surface_block = gxm_mapped_memory_block_get(color_surface_inner->data);
+	color_surface_block = SceSysmem_get_dk_memblock_for_addr(color_surface_inner->data);
 	if (!color_surface_block)
 		return SCE_GXM_ERROR_INVALID_VALUE;
 
 	LOG("sceGxmBeginScene to renderTarget %p, fragmentSyncObject: %p, w: %ld, h: %ld, stride: %ld, CPU addr: %p",
 		renderTarget, fragmentSyncObject, color_surface_inner->width, color_surface_inner->height,
 		color_surface_inner->strideInPixels,
-		dkMemBlockGetCpuAddr(color_surface_block->memblock));
+		dkMemBlockGetCpuAddr(color_surface_block));
 
-	dkImageLayoutMakerDefaults(&image_layout_maker, g_device);
-	image_layout_maker.flags = DkImageFlags_UsageRender | DkImageFlags_PitchLinear;
-	image_layout_maker.format = DkImageFormat_RGBA8_Unorm;
-	image_layout_maker.dimensions[0] = color_surface_inner->width;
-	image_layout_maker.dimensions[1] = color_surface_inner->height;
-	image_layout_maker.pitchStride = color_surface_inner->strideInPixels *
-					 gxm_color_format_bytes_per_pixel(color_surface_inner->colorFormat);
-	dkImageLayoutInitialize(&image_layout, &image_layout_maker);
-	image_block_offset = (uintptr_t)color_surface_inner->data - (uintptr_t)color_surface_block->base;
-	dkImageInitialize(&framebuffer, &image_layout, color_surface_block->memblock ,
-			  image_block_offset);
-	dkImageViewDefaults(&image_view, &framebuffer);
+	dk_image_view_for_gxm_color_surface(&color_surface_image, &color_surface_view,
+					    color_surface_block, color_surface_inner);
 
-	dkRasterizerStateDefaults(&rasterizerState);
-	dkColorStateDefaults(&colorState);
-	dkColorWriteStateDefaults(&colorWriteState);
+	dkRasterizerStateDefaults(&rasterizer_state);
+	dkColorStateDefaults(&color_state);
+	dkColorWriteStateDefaults(&color_write_state);
 
 	dkCmdBufClear(context->cmdbuf);
 
-	dkCmdBufBindRenderTarget(context->cmdbuf, &image_view, NULL);
+	dkCmdBufBindRenderTarget(context->cmdbuf, &color_surface_view, NULL);
 
 	dkCmdBufSetViewports(context->cmdbuf, 0, &viewport, 1);
 	dkCmdBufSetScissors(context->cmdbuf, 0, &scissor, 1);
 	dkCmdBufClearColorFloat(context->cmdbuf, 0, DkColorMask_RGBA, 0.125f, 0.294f, 0.478f, 1.0f);
 	dkCmdBufBindShaders(context->cmdbuf, DkStageFlag_GraphicsMask, shaders, ARRAY_SIZE(shaders));
-	dkCmdBufBindRasterizerState(context->cmdbuf, &rasterizerState);
-	dkCmdBufBindColorState(context->cmdbuf, &colorState);
-	dkCmdBufBindColorWriteState(context->cmdbuf, &colorWriteState);
+	dkCmdBufBindRasterizerState(context->cmdbuf, &rasterizer_state);
+	dkCmdBufBindColorState(context->cmdbuf, &color_state);
+	dkCmdBufBindColorWriteState(context->cmdbuf, &color_write_state);
 
 	if (fragmentSyncObject)
 		dkCmdBufWaitFence(context->cmdbuf, &fragmentSyncObject->fence);
 
 	context->vertex_ringbuf.head = 0;
+	context->fragment_ringbuf.head = 0;
 	context->scene.valid = true;
 
 	return 0;
@@ -688,9 +650,12 @@ static int SceGxmDisplayQueue_thread(SceSize args, void *argp)
 
 			/* Pop fence, wait for the rendering to finish, and call the callback */
 			entry = &queue->entries[queue->tail];
-			dkFenceWait(entry->fence, -1);
+			dkFenceWait(&entry->new_fence, -1);
 
 			queue->display_queue_callback(entry->callback_data);
+
+			/* Signal that the old buffer has swapped out, so it can be rendered to again */
+			// dkFenceSignal(&entry->old_fence);
 
 			queue->tail = (queue->tail + 1) & (queue->num_entries - 1);
 			ueventSignal(&queue->ready_evflag);
@@ -709,16 +674,20 @@ int sceGxmDisplayQueueAddEntry(SceGxmSyncObject *oldBuffer, SceGxmSyncObject *ne
 {
 	DisplayQueueControlBlock *queue = g_display_queue;
 
+	LOG("sceGxmDisplayQueueAddEntry: old: %p, new: %p", oldBuffer, newBuffer);
+
 	dkQueueSignalFence(g_render_queue, &newBuffer->fence, true);
 	dkQueueFlush(g_render_queue);
 
+	/* Throttle down if we already have enough pending display queue entries */
 	while (CIRC_CNT(queue->head, queue->tail, queue->num_entries) ==
 	       queue->display_queue_max_pending_count) {
 		waitSingle(waiterForUEvent(&queue->ready_evflag), -1);
 	}
 
-	/* Push new fence and callback data to the display queue */
-	queue->entries[queue->head].fence = &newBuffer->fence;
+	/* Push the fences and the callback data to the display queue */
+	queue->entries[queue->head].new_fence = newBuffer->fence;
+	queue->entries[queue->head].old_fence = oldBuffer->fence;
 	memcpy(queue->entries[queue->head].callback_data, callbackData,
 	       queue->display_queue_callback_data_size);
 	queue->head = (queue->head + 1) & (queue->num_entries - 1);
@@ -752,19 +721,19 @@ int sceGxmSetVertexStream(SceGxmContext *context, unsigned int streamIndex, cons
 {
 	DkVtxAttribState vertex_attrib_state[SCE_GXM_MAX_VERTEX_ATTRIBUTES];
 	DkVtxBufferState vertex_buffer_state;
-	GxmMappedMemoryBlock *stream_block;
+	VitaMemBlockInfo *stream_block;
 	uint32_t stream_offset;
 	SceGxmVertexAttribute *attributes = context->vertex_program->attributes;
 	uint32_t attribute_count = context->vertex_program->attributeCount;
 	SceGxmVertexStream *streams = context->vertex_program->streams;
 
-	stream_block = gxm_mapped_memory_block_get(streamData);
+	stream_block = SceSysmem_get_vita_memblock_info_for_addr(streamData);
 	if (!stream_block)
 		return SCE_GXM_ERROR_INVALID_VALUE;
 
 	stream_offset = (uintptr_t)streamData - (uintptr_t)stream_block->base;
 	dkCmdBufBindVtxBuffer(context->cmdbuf, streamIndex,
-			      dkMemBlockGetGpuAddr(stream_block->memblock) + stream_offset,
+			      dkMemBlockGetGpuAddr(stream_block->dk_memblock) + stream_offset,
 			      stream_block->size - stream_offset);
 
 	memset(vertex_attrib_state, 0, attribute_count * sizeof(DkVtxAttribState));
@@ -790,18 +759,18 @@ int sceGxmSetVertexStream(SceGxmContext *context, unsigned int streamIndex, cons
 int sceGxmDraw(SceGxmContext *context, SceGxmPrimitiveType primType, SceGxmIndexFormat indexType,
 	       const void *indexData, unsigned int indexCount)
 {
-	GxmMappedMemoryBlock *index_block;
+	VitaMemBlockInfo *index_block;
 	uint32_t index_offset;
 
 	LOG("sceGxmDraw: primType: 0x%x, indexCount: %d", primType, indexCount);
 
-	index_block = gxm_mapped_memory_block_get(indexData);
+	index_block = SceSysmem_get_vita_memblock_info_for_addr(indexData);
 	if (!index_block)
 		return SCE_GXM_ERROR_INVALID_VALUE;
 
 	index_offset = (uintptr_t)indexData - (uintptr_t)index_block->base;
 	dkCmdBufBindIdxBuffer(context->cmdbuf, gxm_to_dk_idx_format(indexType),
-			      dkMemBlockGetGpuAddr(index_block->memblock) + index_offset);
+			      dkMemBlockGetGpuAddr(index_block->dk_memblock) + index_offset);
 	dkCmdBufDrawIndexed(context->cmdbuf, gxm_to_dk_primitive(primType), indexCount, 1, 0, 0, 0);
 
 	return 0;
@@ -809,45 +778,22 @@ int sceGxmDraw(SceGxmContext *context, SceGxmPrimitiveType primType, SceGxmIndex
 
 int sceGxmMapMemory(void *base, SceSize size, SceGxmMemoryAttribFlags attr)
 {
-	GxmMappedMemoryBlock *block;
-	DkMemBlockMaker memblock_maker;
+	VitaMemBlockInfo *block;
 
-	/* It is not valid to map a memory range where all or part
-	   of that range has already been mapped */
-	block = gxm_mapped_memory_block_get(base);
-	if (block)
-		return SCE_GXM_ERROR_INVALID_POINTER;
-
-	block = gxm_mapped_memory_block_alloc();
+	/* By default, SceSysmem maps all the allocated blocks to the GPU.
+	 * Here we just check if it exists */
+	block = SceSysmem_get_vita_memblock_info_for_addr(base);
 	if (!block)
-		return SCE_KERNEL_ERROR_NO_MEMORY;
-
-	dkMemBlockMakerDefaults(&memblock_maker, g_device, size);
-	memblock_maker.device = g_device;
-	memblock_maker.size = size;
-	memblock_maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached;
-	memblock_maker.storage = base;
-
-	block->memblock = dkMemBlockCreate(&memblock_maker);
-	if (!block->memblock) {
-		gxm_mapped_memory_block_release(block);
 		return SCE_GXM_ERROR_INVALID_POINTER;
-	}
-
-	assert(base == dkMemBlockGetCpuAddr(block->memblock));
-	block->base = base;
-	block->size = size;
 
 	return 0;
 }
 
 int sceGxmUnmapMemory(void *base)
 {
-	GxmMappedMemoryBlock *block = gxm_mapped_memory_block_get(base);
+	VitaMemBlockInfo *block = SceSysmem_get_vita_memblock_info_for_addr(base);
 	if (!block)
 		return SCE_GXM_ERROR_INVALID_POINTER;
-
-	gxm_mapped_memory_block_release(block);
 
 	return 0;
 }
@@ -915,8 +861,9 @@ void SceGxm_register(void)
 	module_register_exports(exports, ARRAY_SIZE(exports));
 }
 
-int SceGxm_init(void)
+int SceGxm_init(DkDevice dk_device)
 {
+	g_dk_device = dk_device;
 	return 0;
 }
 

@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <switch.h>
+#include <deko3d.h>
 #include <psp2/kernel/threadmgr.h>
 #include "SceSysmem.h"
 #include "SceKernelThreadMgr.h"
@@ -15,6 +16,20 @@
 #include "module.h"
 #include "log.h"
 #include "load.h"
+
+static void dk_debug_callback(void *userData, const char *context, DkResult result, const char *message)
+{
+	char description[256];
+
+	if (result == DkResult_Success) {
+		LOG("deko3d debug callback: context: %s, message: %s, result %d",
+		    context, message, result);
+	} else {
+		snprintf(description, sizeof(description), "context: %s, message: %s, result %d",
+		         context, message, result);
+		fatal_error("deko3d fatal error.", description);
+	}
+}
 
 static void register_modules(void)
 {
@@ -29,10 +44,18 @@ static void register_modules(void)
 
 static int launch(SceKernelThreadEntry entry)
 {
+	DkDeviceMaker device_maker;
+	DkDevice dk_device;
 	int ret;
 
+	/* Initialize deko3d device */
+	dkDeviceMakerDefaults(&device_maker);
+	device_maker.userData = NULL;
+	device_maker.cbDebug = dk_debug_callback;
+	dk_device = dkDeviceCreate(&device_maker);
+
 	/* Init modules */
-	ret = SceSysmem_init();
+	ret = SceSysmem_init(dk_device);
 	if (ret != 0)
 		goto done;
 	ret = SceLibKernel_init();
@@ -41,10 +64,10 @@ static int launch(SceKernelThreadEntry entry)
 	ret = SceKernelThreadMgr_init();
 	if (ret != 0)
 		goto done;
-	ret = SceDisplay_init();
+	ret = SceDisplay_init(dk_device);
 	if (ret != 0)
 		goto done;
-	ret = SceGxm_init();
+	ret = SceGxm_init(dk_device);
 	if (ret != 0)
 		goto done;
 	ret = SceCtrl_init();
@@ -61,6 +84,8 @@ static int launch(SceKernelThreadEntry entry)
 	SceGxm_finish();
 	SceDisplay_finish();
 	SceKernelThreadMgr_finish();
+
+	dkDeviceDestroy(dk_device);
 
 	LOG("Process finished! Returned: %d", ret);
 
