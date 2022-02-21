@@ -23,9 +23,10 @@ static DkSwapchain g_swapchain;
 static bool g_swapchain_created = false;
 static uint32_t g_swapchain_image_width;
 static uint32_t g_swapchain_image_height;
-static DkFence g_present_fence;
 static Thread g_presenter_thread;
 static LEvent g_presenter_thread_run;
+static Mutex g_vblank_mutex;
+static CondVar g_vblank_condvar;
 static SceDisplayFrameBuf g_vita_conf_fb;
 
 static void create_swapchain(uint32_t width, uint32_t height)
@@ -123,11 +124,11 @@ static void presenter_thread_func(void *arg)
 {
 	DkCmdList cmdlist;
 	DkImage src_image;
+	DkFence acquire_fence, present_fence;
 	const void *base;
 	uint32_t width, height, stride;
 	uint32_t pixelfmt;
 	int slot;
-	DkFence acquire_fence;
 
 	while (leventTryWait(&g_presenter_thread_run)) {
 		/* Make sure Vita has configured a framebuffer */
@@ -164,20 +165,28 @@ static void presenter_thread_func(void *arg)
 		cmdbuf_copy_image(g_cmdbuf, &src_image, width, height,
 				  &g_swapchain_images[slot], width, height);
 
-		/* Submit the 2D copy command */
-		cmdlist = dkCmdBufFinishList(g_cmdbuf);
-		dkQueueSubmitCommands(g_transfer_queue, cmdlist);
+		/* Signal the present fence once the 2D transfer finishes */
+		dkCmdBufSignalFence(g_cmdbuf, &present_fence, true);
 
-		/* Signal fence once the transfer has finished */
-		dkQueueSignalFence(g_transfer_queue, &g_present_fence, true);
+		/* Finish the command list */
+		cmdlist = dkCmdBufFinishList(g_cmdbuf);
+
+		/* Submit the command list */
+		dkQueueSubmitCommands(g_transfer_queue, cmdlist);
 
 		/* Kick the transfer queue to start processing commands */
 		dkQueueFlush(g_transfer_queue);
 
-		/* Present the new frame, passing the transfer-finished fence */
-		dkSwapchainPresentImage(g_swapchain, slot, &g_present_fence);
+		/* Present the new frame, passing the transfer finished fence */
+		dkSwapchainPresentImage(g_swapchain, slot, &present_fence);
 
-		/* Wait until the transfer has finished */
+		/* Wait until the acquire fence is signalled: the new frame has been presented */
+		dkFenceWait(&acquire_fence, -1);
+
+		/* Notify that there has been a "VBlank" (new frame presented) */
+		condvarWakeAll(&g_vblank_condvar);
+
+		/* Make sure the transfer has finished (this should have happened when the acquire fence got signalled) */
 		dkQueueWaitIdle(g_transfer_queue);
 
 		/* The transfer has finished and the queue is idle, we can reset the command buffer */
@@ -196,7 +205,7 @@ int sceDisplaySetFrameBuf(const SceDisplayFrameBuf *pParam, SceDisplaySetBufSync
 
 int sceDisplayWaitVblankStart(void)
 {
-	dkFenceWait(&g_present_fence, -1);
+	condvarWait(&g_vblank_condvar, &g_vblank_mutex);
 	return 0;
 }
 
@@ -221,7 +230,7 @@ int SceDisplay_init(DkDevice dk_device)
 
 	/* Create graphics queue for transfers */
 	dkQueueMakerDefaults(&queue_maker, dk_device);
-	queue_maker.flags = DkQueueFlags_Graphics | DkQueueFlags_HighPrio;
+	queue_maker.flags = DkQueueFlags_HighPrio;
 	queue_maker.perWarpScratchMemorySize = 0;
 	queue_maker.maxConcurrentComputeJobs = 0;
 	g_transfer_queue = dkQueueCreate(&queue_maker);
@@ -239,6 +248,8 @@ int SceDisplay_init(DkDevice dk_device)
 	dkCmdBufAddMemory(g_cmdbuf, g_cmdbuf_memblock, 0, CMDBUF_SIZE);
 
 	leventInit(&g_presenter_thread_run, true, false);
+	mutexInit(&g_vblank_mutex);
+	condvarInit(&g_vblank_condvar);
 
 	res = threadCreate(&g_presenter_thread, presenter_thread_func, NULL, NULL, 0x10000, 28, -2);
 	if (R_FAILED(res)) {
