@@ -107,6 +107,7 @@ int load_exe(Jit *jit, const char *filename, void **entry)
 	void *data;
 	uint32_t size;
 	uint8_t *magic;
+	int ret = 0;
 
 	LOG("Opening %s for reading.", filename);
 	if (utils_load_file(filename, &data, &size) != 0) {
@@ -121,7 +122,7 @@ int load_exe(Jit *jit, const char *filename, void **entry)
 			LOG("Found an ELF, loading.");
 			if (load_elf(jit, data, entry) < 0) {
 				LOG("Cannot load ELF.");
-				return -1;
+				ret = -1;
 			}
 		}
 	} else if (magic[0] == SCEMAG0) {
@@ -129,16 +130,16 @@ int load_exe(Jit *jit, const char *filename, void **entry)
 			LOG("Found a SELF, loading.");
 			if (load_self(jit, data, entry) < 0) {
 				LOG("Cannot load SELF.");
-				return -1;
+				ret = -1;
 			}
 		}
 	} else {
 		LOG("Invalid magic.");
-		return -1;
+		ret = -1;
 	}
 
 	free(data);
-	return 0;
+	return ret;
 }
 
 static int load_self(Jit *jit, const void *data, void **entry)
