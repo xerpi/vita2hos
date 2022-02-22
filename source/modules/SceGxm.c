@@ -66,6 +66,13 @@ typedef struct SceGxmVertexProgram {
 	unsigned int streamCount;
 } SceGxmVertexProgram;
 
+typedef struct SceGxmFragmentProgram {
+	SceGxmShaderPatcherId programId;
+	SceGxmOutputRegisterFormat outputFormat;
+	SceGxmMultisampleMode multisampleMode;
+	SceGxmBlendInfo *blendInfo;
+} SceGxmFragmentProgram;
+
 typedef struct SceGxmRenderTarget {
 	SceGxmRenderTargetParams params;
 } SceGxmRenderTarget;
@@ -132,6 +139,81 @@ typedef struct {
 } SceGxmColorSurfaceInner;
 static_assert(sizeof(SceGxmColorSurfaceInner) == sizeof(SceGxmColorSurface), "Incorrect size");
 
+typedef struct SceGxmProgram {
+	uint32_t magic; // should be "GXP\0"
+
+	uint8_t major_version; //min 1
+	uint8_t minor_version; //min 4
+	uint16_t sdk_version; // 0x350 - 3.50
+
+	uint32_t size; //size of file - ignoring padding bytes at the end after SceGxmProgramParameter table
+
+	uint32_t binary_guid;
+	uint32_t source_guid;
+
+	uint32_t program_flags;
+
+	uint32_t buffer_flags; // Buffer flags. 2 bits per buffer. 0x1 - loaded into registers. 0x2 - read from memory
+
+	uint32_t texunit_flags[2]; // Tex unit flags. 4 bits per tex unit. 0x1 is non dependent read, 0x2 is dependent.
+
+	uint32_t parameter_count;
+	uint32_t parameters_offset; // Number of bytes from the start of this field to the first parameter.
+	uint32_t varyings_offset; // offset to vertex outputs / fragment inputs, relative to this field
+
+	uint16_t primary_reg_count; // (PAs)
+	uint16_t secondary_reg_count; // (SAs)
+	uint32_t temp_reg_count1;
+	uint16_t temp_reg_count2; //Temp reg count in selective rate(programmable blending) phase
+
+	uint16_t primary_program_phase_count;
+	uint32_t primary_program_instr_count;
+	uint32_t primary_program_offset;
+
+	uint32_t secondary_program_instr_count;
+	uint32_t secondary_program_offset; // relative to the beginning of this field
+	uint32_t secondary_program_offset_end; // relative to the beginning of this field
+
+	uint32_t scratch_buffer_count;
+	uint32_t thread_buffer_count;
+	uint32_t literal_buffer_count;
+
+	uint32_t data_buffer_count;
+	uint32_t texture_buffer_count;
+	uint32_t default_uniform_buffer_count;
+
+	uint32_t literal_buffer_data_offset;
+
+	uint32_t compiler_version; // The version is shifted 4 bits to the left.
+
+	uint32_t literals_count;
+	uint32_t literals_offset;
+	uint32_t uniform_buffer_count;
+	uint32_t uniform_buffer_offset;
+
+	uint32_t dependent_sampler_count;
+	uint32_t dependent_sampler_offset;
+	uint32_t texture_buffer_dependent_sampler_count;
+	uint32_t texture_buffer_dependent_sampler_offset;
+	uint32_t container_count;
+	uint32_t container_offset;
+	uint32_t sampler_query_info_offset; // Offset to array of uint16_t
+} SceGxmProgram;
+
+typedef struct SceGxmProgramParameter {
+	int32_t name_offset; // Number of bytes from the start of this structure to the name string.
+	struct {
+		uint16_t category : 4; // SceGxmParameterCategory
+		uint16_t type : 4; // SceGxmParameterType - applicable for constants, not applicable for samplers (select type like float, half, fixed ...)
+		uint16_t component_count : 4; // applicable for constants, not applicable for samplers (select size like float2, float3, float3 ...)
+		uint16_t container_index : 4; // applicable for constants, not applicable for samplers (buffer, default, texture)
+	};
+	uint8_t semantic; // applicable only for for vertex attributes, for everything else it's 0
+	uint8_t semantic_index;
+	uint32_t array_size;
+	int32_t resource_index;
+} SceGxmProgramParameter;
+
 typedef struct {
 	DkFence new_fence;
 	DkFence old_fence;
@@ -176,6 +258,24 @@ static DkShader g_vertexShader;
 static DkShader g_fragmentShader;
 
 static int SceGxmDisplayQueue_thread(SceSize args, void *argp);
+
+static inline uint32_t gxm_parameter_type_size(SceGxmParameterType type)
+{
+	switch (type) {
+	case SCE_GXM_PARAMETER_TYPE_U8:
+	case SCE_GXM_PARAMETER_TYPE_S8:
+		return 1;
+	case SCE_GXM_PARAMETER_TYPE_F16:
+	case SCE_GXM_PARAMETER_TYPE_U16:
+	case SCE_GXM_PARAMETER_TYPE_S16:
+		return 2;
+	case SCE_GXM_PARAMETER_TYPE_F32:
+	case SCE_GXM_PARAMETER_TYPE_U32:
+	case SCE_GXM_PARAMETER_TYPE_S32:
+	default:
+		return 4;
+	}
+}
 
 static void load_shader_memory(DkMemBlock memblock, DkShader *shader, uint32_t *offset, const void *data, uint32_t size)
 {
@@ -405,6 +505,9 @@ int sceGxmShaderPatcherRegisterProgram(SceGxmShaderPatcher *shaderPatcher,
 							  sizeof(SceGxmShaderPatcherId));
 	shaderPatcher->registered_programs[shaderPatcher->registered_count] = shader_patcher_id;
 	shaderPatcher->registered_count++;
+
+	*programId = shader_patcher_id;
+
 	return 0;
 }
 
@@ -437,6 +540,7 @@ int sceGxmShaderPatcherCreateVertexProgram(SceGxmShaderPatcher *shaderPatcher,
 	vertex_program->streams = calloc(streamCount, sizeof(SceGxmVertexStream));
 	memcpy(vertex_program->streams, streams, streamCount * sizeof(SceGxmVertexStream));
 	vertex_program->streamCount = streamCount;
+
 	*vertexProgram = vertex_program;
 
 	return 0;
@@ -459,13 +563,38 @@ int sceGxmShaderPatcherCreateFragmentProgram(SceGxmShaderPatcher *shaderPatcher,
 					     const SceGxmProgram *vertexProgram,
 					     SceGxmFragmentProgram **fragmentProgram)
 {
+	SceGxmFragmentProgram *fragment_program;
+
+	fragment_program = malloc(sizeof(*fragment_program));
+	if (!fragment_program)
+		return SCE_KERNEL_ERROR_NO_MEMORY;
+
+	memset(fragment_program, 0, sizeof(*fragment_program));
+	fragment_program->programId = programId;
+	fragment_program->outputFormat = outputFormat;
+	fragment_program->multisampleMode = multisampleMode;
+	fragment_program->blendInfo = malloc(sizeof(SceGxmBlendInfo));
+	memcpy(fragment_program->blendInfo, blendInfo, sizeof(SceGxmBlendInfo));
+
+	*fragmentProgram = fragment_program;
+
 	return 0;
 }
 
 int sceGxmShaderPatcherReleaseFragmentProgram(SceGxmShaderPatcher *shaderPatcher,
 					      SceGxmFragmentProgram *fragmentProgram)
 {
+	free(fragmentProgram->blendInfo);
+	free(fragmentProgram);
 	return 0;
+}
+
+const SceGxmProgram *sceGxmShaderPatcherGetProgramFromId(SceGxmShaderPatcherId programId)
+{
+	if (programId)
+		return programId->programHeader;
+
+	return NULL;
 }
 
 int sceGxmGetRenderTargetMemSize(const SceGxmRenderTargetParams *params, unsigned int *driverMemSize)
@@ -756,6 +885,102 @@ int sceGxmSetVertexStream(SceGxmContext *context, unsigned int streamIndex, cons
 	return 0;
 }
 
+int sceGxmReserveVertexDefaultUniformBuffer(SceGxmContext *context, void **uniformBuffer)
+{
+	DkBufExtents buf_extents;
+	uint32_t default_uniform_buffer_count;
+	uint32_t uniform_buf_size;
+	const SceGxmProgram *program;
+
+	if (!context->scene.valid)
+		return SCE_GXM_ERROR_NOT_WITHIN_SCENE;
+	else if (!context->vertex_program)
+		return SCE_GXM_ERROR_NULL_PROGRAM;
+
+	program = context->vertex_program->programId->programHeader;
+
+	default_uniform_buffer_count = program->default_uniform_buffer_count;
+	if (default_uniform_buffer_count == 0) {
+		*uniformBuffer = NULL;
+		return 0;
+	}
+
+	uniform_buf_size = ALIGN(default_uniform_buffer_count * sizeof(float), DK_UNIFORM_BUF_ALIGNMENT);
+
+	buf_extents.addr = dkMemBlockGetGpuAddr(context->vertex_ringbuf.memblock) + context->vertex_ringbuf.head;
+	buf_extents.size = uniform_buf_size;
+
+	dkCmdBufBindUniformBuffers(context->cmdbuf, DkStage_Vertex, 0, &buf_extents, 1);
+
+	*uniformBuffer = dkMemBlockGetCpuAddr(context->vertex_ringbuf.memblock) + context->vertex_ringbuf.head;
+	context->vertex_ringbuf.head += uniform_buf_size;
+
+	return 0;
+}
+
+int sceGxmReserveFragmentDefaultUniformBuffer(SceGxmContext *context, void **uniformBuffer)
+{
+	DkBufExtents buf_extents;
+	uint32_t default_uniform_buffer_count;
+	uint32_t uniform_buf_size;
+	const SceGxmProgram *program;
+
+	if (!context->scene.valid)
+		return SCE_GXM_ERROR_NOT_WITHIN_SCENE;
+	else if (!context->fragment_program)
+		return SCE_GXM_ERROR_NULL_PROGRAM;
+
+	program = context->fragment_program->programId->programHeader;
+
+	default_uniform_buffer_count = program->default_uniform_buffer_count;
+	if (default_uniform_buffer_count == 0) {
+		*uniformBuffer = NULL;
+		return 0;
+	}
+
+	uniform_buf_size = ALIGN(default_uniform_buffer_count * sizeof(float), DK_UNIFORM_BUF_ALIGNMENT);
+
+	buf_extents.addr = dkMemBlockGetGpuAddr(context->fragment_ringbuf.memblock) + context->fragment_ringbuf.head;
+	buf_extents.size = uniform_buf_size;
+
+	dkCmdBufBindUniformBuffers(context->cmdbuf, DkStage_Fragment, 0, &buf_extents, 1);
+
+	*uniformBuffer = dkMemBlockGetCpuAddr(context->fragment_ringbuf.memblock) + context->fragment_ringbuf.head;
+	context->fragment_ringbuf.head += uniform_buf_size;
+
+	return 0;
+}
+
+int sceGxmSetUniformDataF(void *uniformBuffer, const SceGxmProgramParameter *parameter,
+			  unsigned int componentOffset, unsigned int componentCount,
+			  const float *sourceData)
+{
+	uint32_t component_size = gxm_parameter_type_size(parameter->type);
+	uint32_t dst_offset = component_size * (parameter->resource_index + componentOffset);
+	uint32_t copy_size = component_size * componentCount;
+
+	memcpy((char *)uniformBuffer + dst_offset, sourceData, copy_size);
+
+	return 0;
+}
+
+const SceGxmProgramParameter *sceGxmProgramFindParameterByName(const SceGxmProgram *program, const char *name)
+{
+	const uint8_t *parameter_bytes;
+	const char *parameter_name;
+	const SceGxmProgramParameter *const parameters =
+		(const SceGxmProgramParameter *)((char *)&program->parameters_offset + program->parameters_offset);
+
+	for (uint32_t i = 0; i < program->parameter_count; i++) {
+		parameter_bytes = (const uint8_t *)&parameters[i];
+		parameter_name = (const char *)(parameter_bytes + parameters[i].name_offset);
+		if (strcmp(parameter_name, name) == 0)
+			return (const SceGxmProgramParameter *)parameter_bytes;
+	}
+
+	return NULL;
+}
+
 int sceGxmDraw(SceGxmContext *context, SceGxmPrimitiveType primType, SceGxmIndexFormat indexType,
 	       const void *indexData, unsigned int indexCount)
 {
@@ -838,6 +1063,7 @@ void SceGxm_register(void)
 		{0xAC1FF2DA, sceGxmShaderPatcherReleaseVertexProgram},
 		{0x4ED2E49D, sceGxmShaderPatcherCreateFragmentProgram},
 		{0xBE2743D1, sceGxmShaderPatcherReleaseFragmentProgram},
+		{0xA949A803, sceGxmShaderPatcherGetProgramFromId},
 		{0xB291C959, sceGxmGetRenderTargetMemSize},
 		{0x207AF96B, sceGxmCreateRenderTarget},
 		{0x0B94C50A, sceGxmDestroyRenderTarget},
@@ -849,6 +1075,10 @@ void SceGxm_register(void)
 		{0x31FF8ABD, sceGxmSetVertexProgram},
 		{0xAD2F48D9, sceGxmSetFragmentProgram},
 		{0x895DF2E9, sceGxmSetVertexStream},
+		{0x97118913, sceGxmReserveVertexDefaultUniformBuffer},
+		{0x7B1FABB6, sceGxmReserveFragmentDefaultUniformBuffer},
+		{0x65DD0C84, sceGxmSetUniformDataF},
+		{0x277794C4, sceGxmProgramFindParameterByName},
 		{0xBC059AFC, sceGxmDraw},
 		{0xC61E34FC, sceGxmMapMemory},
 		{0x828C68E8, sceGxmUnmapMemory},
