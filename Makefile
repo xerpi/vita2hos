@@ -50,9 +50,18 @@ APP_TITLEID	:= 0101000000000010
 
 TARGET		:= $(notdir $(CURDIR))
 BUILD		:= build
-SOURCES		:= source source/modules
+SOURCES		:= source source/modules vita3k/gxm/src vita3k/shader/src vita3k/shader/src/translator \
+		   vita3k/external/SPIRV-Cross vita3k/external/glslang/SPIRV vita3k/external/fmt/src \
+		   uam/source uam/mesa-imported/tgsi uam/mesa-imported/codegen uam/mesa-imported/state_tracker \
+		   uam/mesa-imported/util uam/mesa-imported/glsl uam/mesa-imported/glsl/glcpp \
+		   uam/mesa-imported/compiler uam/mesa-imported/program uam/mesa-imported/main \
+		   uam/build/mesa-imported/glsl uam/build/mesa-imported/glsl/glcpp
 DATA		:= data
-INCLUDES	:= include include/modules
+INCLUDES	:= include include/modules vita3k/gxm/include vita3k/shader/include \
+		   vita3k/features/include vita3k/external/SPIRV-Cross vita3k/external/glslang \
+		   vita3k/mem/include vita3k/util/include vita3k/external/rpcs3/include \
+		   vita3k/external/fmt/include uam/source uam/mesa-imported uam/mesa-imported/glsl \
+		   uam/build/mesa-imported/glsl uam/build/mesa-imported
 SHADER		:= shader
 #ROMFS		:= romfs
 
@@ -67,9 +76,9 @@ ARCH	:=	-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIC -nostartfile
 CFLAGS	:=	-g3 -Wall -O2 -ffunction-sections \
 			$(ARCH) $(DEFINES)
 
-CFLAGS	+=	$(INCLUDE) -D__SWITCH__
+CFLAGS	+=	$(INCLUDE) -D__SWITCH__ -D_ISOC11_SOURCE -DNDEBUG
 
-CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions
+CXXFLAGS	:= $(CFLAGS) -fpermissive -fno-exceptions -DVITA3K_CPP17 -DSPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS -Wno-unused-variable
 
 ASFLAGS	:=	-g $(ARCH)
 LDFLAGS	=	-specs=$(DEVKITPRO)/libnx32/switch32.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
@@ -101,6 +110,7 @@ export DEPSDIR	:=	$(CURDIR)/$(BUILD)
 
 CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
+CCFILES		:= 	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cc)))
 SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
 BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
 GLSLFILES	:=	$(foreach dir,$(SHADER),$(notdir $(wildcard $(dir)/*.glsl)))
@@ -120,7 +130,7 @@ endif
 #---------------------------------------------------------------------------------
 
 export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES)) $(GLSLFILES:.glsl=.dksh.o)
-export OFILES_SRC	:=	$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
+export OFILES_SRC	:=	$(CPPFILES:.cpp=.o) $(CCFILES:.cc=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
 export OFILES 	:=	$(OFILES_BIN) $(OFILES_SRC)
 export HFILES_BIN	:=	$(addsuffix .h,$(subst .,_,$(BINFILES))) \
 				$(addsuffix .h,$(subst .,_,$(GLSLFILES:.glsl=.dksh)))

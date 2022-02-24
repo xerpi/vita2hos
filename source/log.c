@@ -15,7 +15,7 @@ void LOGSTR(const char *str)
 
 void __attribute__((format(printf, 1, 2))) LOG(const char *fmt, ...)
 {
-	char buf[256];
+	static char buf[8*1024];
 	va_list argptr;
 	int n;
 

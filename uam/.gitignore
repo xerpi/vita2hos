@@ -1,0 +1,11 @@
+.*/
+build/
+*~
+*.exe
+*.bak
+*.bat
+*.bin
+*.glsl
+*.tgsi
+*.dksh
+*.txt
