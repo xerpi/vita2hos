@@ -40,8 +40,7 @@ static void create_swapchain(uint32_t width, uint32_t height)
 
 	/* Calculate layout for the framebuffers */
 	dkImageLayoutMakerDefaults(&image_layout_maker, g_dk_device);
-	image_layout_maker.flags = DkImageFlags_Usage2DEngine | DkImageFlags_UsagePresent |
-				   DkImageFlags_HwCompression;
+	image_layout_maker.flags = DkImageFlags_Usage2DEngine | DkImageFlags_UsagePresent;
 	image_layout_maker.format = DkImageFormat_RGBA8_Unorm;
 	image_layout_maker.dimensions[0] = width;
 	image_layout_maker.dimensions[1] = height;
@@ -124,7 +123,7 @@ static void presenter_thread_func(void *arg)
 {
 	DkCmdList cmdlist;
 	DkImage src_image;
-	DkFence acquire_fence, present_fence;
+	DkFence acquire_fence;
 	const void *base;
 	uint32_t width, height, stride;
 	uint32_t pixelfmt;
@@ -165,20 +164,14 @@ static void presenter_thread_func(void *arg)
 		cmdbuf_copy_image(g_cmdbuf, &src_image, width, height,
 				  &g_swapchain_images[slot], width, height);
 
-		/* Signal the present fence once the 2D transfer finishes */
-		dkCmdBufSignalFence(g_cmdbuf, &present_fence, true);
-
 		/* Finish the command list */
 		cmdlist = dkCmdBufFinishList(g_cmdbuf);
 
 		/* Submit the command list */
 		dkQueueSubmitCommands(g_transfer_queue, cmdlist);
 
-		/* Kick the transfer queue to start processing commands */
-		dkQueueFlush(g_transfer_queue);
-
-		/* Present the new frame, passing the transfer finished fence */
-		dkSwapchainPresentImage(g_swapchain, slot, &present_fence);
+		/* Present the new frame once the transfer finishes */
+		dkQueuePresentImage(g_transfer_queue, g_swapchain, slot);
 
 		/* Wait until the acquire fence is signalled: the new frame has been presented */
 		dkFenceWait(&acquire_fence, -1);

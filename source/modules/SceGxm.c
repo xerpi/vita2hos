@@ -70,7 +70,7 @@ typedef struct SceGxmFragmentProgram {
 	SceGxmShaderPatcherId programId;
 	SceGxmOutputRegisterFormat outputFormat;
 	SceGxmMultisampleMode multisampleMode;
-	SceGxmBlendInfo *blendInfo;
+	SceGxmBlendInfo blendInfo;
 } SceGxmFragmentProgram;
 
 typedef struct SceGxmRenderTarget {
@@ -573,8 +573,8 @@ int sceGxmShaderPatcherCreateFragmentProgram(SceGxmShaderPatcher *shaderPatcher,
 	fragment_program->programId = programId;
 	fragment_program->outputFormat = outputFormat;
 	fragment_program->multisampleMode = multisampleMode;
-	fragment_program->blendInfo = malloc(sizeof(SceGxmBlendInfo));
-	memcpy(fragment_program->blendInfo, blendInfo, sizeof(SceGxmBlendInfo));
+	if (blendInfo)
+		fragment_program->blendInfo = *blendInfo;
 
 	*fragmentProgram = fragment_program;
 
@@ -584,7 +584,6 @@ int sceGxmShaderPatcherCreateFragmentProgram(SceGxmShaderPatcher *shaderPatcher,
 int sceGxmShaderPatcherReleaseFragmentProgram(SceGxmShaderPatcher *shaderPatcher,
 					      SceGxmFragmentProgram *fragmentProgram)
 {
-	free(fragmentProgram->blendInfo);
 	free(fragmentProgram);
 	return 0;
 }
