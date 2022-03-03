@@ -708,7 +708,6 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 
 	dkCmdBufSetViewports(context->cmdbuf, 0, &viewport, 1);
 	dkCmdBufSetScissors(context->cmdbuf, 0, &scissor, 1);
-	dkCmdBufClearColorFloat(context->cmdbuf, 0, DkColorMask_RGBA, 0.125f, 0.294f, 0.478f, 1.0f);
 	dkCmdBufBindShaders(context->cmdbuf, DkStageFlag_GraphicsMask, shaders, ARRAY_SIZE(shaders));
 	dkCmdBufBindRasterizerState(context->cmdbuf, &rasterizer_state);
 	dkCmdBufBindColorState(context->cmdbuf, &color_state);
