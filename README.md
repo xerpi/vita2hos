@@ -9,7 +9,7 @@ When loading a PlayStation Vita executable, _vita2hos_ redirects the [module](ht
 ### How can I use it?
 
 1. Copy `vita2hos.nsp` to your microSD card (i.e. to: `atmosphere/vita2hos.nsp`)
-2. Create `atmosphere/config/override_config.ini` and add the following lines to it:
+2. Create [atmosphere/config/override_config.ini](https://github.com/Atmosphere-NX/Atmosphere/blob/master/config_templates/override_config.ini) and add the following lines to it:
 
     ```ini
     [hbl_config]
@@ -24,6 +24,7 @@ When loading a PlayStation Vita executable, _vita2hos_ redirects the [module](ht
     - Note: As long as this file exists you won't be able to use the homebrew menu and instead will always run vita2hos.
 
       A quick workaround would be to rename the file and restart your Switch.
+      Unfortunately `override_config.ini` doesn't allow multiple `path` entries which is why it has to be done this way.
 
 3. Copy a PSVita `.velf` to the root of your microSD card and rename it to `test.elf`
 4. Boot (or reboot) your Switch and start any game while holding down `R`
