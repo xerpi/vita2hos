@@ -17,6 +17,8 @@
 #include "log.h"
 #include "load.h"
 
+#define VITA_EXE_PATH	"/test.elf"
+
 static void dk_debug_callback(void *userData, const char *context, DkResult result, const char *message)
 {
 	char description[256];
@@ -99,7 +101,6 @@ int main(int argc, char *argv[])
 	void *entry;
 	int ret;
 
-	//consoleInit(NULL);
 	log_to_fb_console = false;
 
 	LOG("vita2hos " VITA2HOS_MAJOR "." VITA2HOS_MINOR "." VITA2HOS_PATCH "-" VITA2HOS_HASH
@@ -107,21 +108,12 @@ int main(int argc, char *argv[])
 
 	register_modules();
 
-	ret = load_exe(&jit, "/test.elf", &entry);
+	ret = load_exe(&jit, VITA_EXE_PATH, &entry);
 	if (ret == 0) {
-		/* Close FB console */
-		//consoleUpdate(NULL);
-		//log_to_fb_console = false;
-		//consoleExit(NULL);
+		LOG("Launching PlayStation Vita executable!");
 
-		LOG("Launching PSVita executable!");
-
-		/* Jump to Vita's ELF entrypoint */
+		/* Jump to Vita's executable entrypoint */
 		ret = launch(entry);
-
-		/* Open FB console */
-		consoleInit(NULL);
-		log_to_fb_console = true;
 
 		LOG("Returned from launch with result: %d", ret);
 
@@ -129,21 +121,12 @@ int main(int argc, char *argv[])
 		ret = jitClose(&jit);
 		LOG("jitClose() returned: 0x%x", ret);
 	} else {
-		LOG("Error loading ELF");
+		fatal_error("Error loading PlayStation Vita executable.",
+			    "Make sure to place it to " VITA_EXE_PATH);
 	}
 
 	module_finish();
 
-	while (appletMainLoop()) {
-		/*padUpdate(&pad);
-		u64 kDown = padGetButtonsDown(&pad);
-		if (kDown & HidNpadButton_Plus)
-			break;*/
-
-		consoleUpdate(NULL);
-	}
-
-	consoleExit(NULL);
 	return 0;
 }
 
