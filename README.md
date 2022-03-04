@@ -26,7 +26,7 @@ When loading a PlayStation Vita executable, _vita2hos_ redirects the [module](ht
       A quick workaround would be to rename the file and restart your Switch.
       Unfortunately `override_config.ini` doesn't allow multiple `path` entries which is why it has to be done this way.
 
-3. Copy a PSVita `.velf` to the root of your microSD card and rename it to `test.elf`
+3. Copy a PSVita `.velf` or `.self` (`eboot.bin`) to the root of your microSD card and rename it to `test.elf`
 4. Boot (or reboot) your Switch and start any game while holding down `R`
     - Attempting to use `vita2hos` via applet mode (album button) will currently result in a fatal error and wouldn't be recommended anyway.
 5. Enjoy!
