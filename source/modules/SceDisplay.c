@@ -95,7 +95,7 @@ static void cmdbuf_copy_image(DkCmdBuf cmdbuf,
 	dkCmdBufBlitImage(cmdbuf, &src_view, &src_rect, &dst_view, &dst_rect, 0, 1);
 }
 
-static void dkimage_for_existing_framebuffer(DkImage *image, const void *addr,
+static bool dkimage_for_existing_framebuffer(DkImage *image, const void *addr,
 					     uint32_t width, uint32_t height, uint32_t stride,
 					     SceDisplayPixelFormat pixelfmt)
 {
@@ -105,7 +105,8 @@ static void dkimage_for_existing_framebuffer(DkImage *image, const void *addr,
 	uint32_t offset;
 
 	memblock = SceSysmem_get_dk_memblock_for_addr(addr);
-	assert(memblock);
+	if (!memblock)
+		return false;
 
 	dkImageLayoutMakerDefaults(&image_layout_maker, g_dk_device);
 	image_layout_maker.flags = DkImageFlags_PitchLinear | DkImageFlags_Usage2DEngine;
@@ -117,6 +118,8 @@ static void dkimage_for_existing_framebuffer(DkImage *image, const void *addr,
 
 	offset = (uintptr_t)addr - (uintptr_t)dkMemBlockGetCpuAddr(memblock);
 	dkImageInitialize(image, &image_layout, memblock, offset);
+
+	return true;
 }
 
 static void presenter_thread_func(void *arg)
@@ -131,10 +134,8 @@ static void presenter_thread_func(void *arg)
 
 	while (leventTryWait(&g_presenter_thread_run)) {
 		/* Make sure Vita has configured a framebuffer */
-		if (!g_vita_conf_fb.base) {
-			svcSleepThread(16666667ull);
-			continue;
-		}
+		if (!g_vita_conf_fb.base)
+			goto next_frame_sleep;
 
 		base = g_vita_conf_fb.base;
 		width = g_vita_conf_fb.width;
@@ -146,13 +147,15 @@ static void presenter_thread_func(void *arg)
 		if (!g_swapchain_created) {
 			create_swapchain(width, height);
 		} else if (g_swapchain_image_width != width || g_swapchain_image_height != height) {
+			dkQueueWaitIdle(g_transfer_queue);
 			dkSwapchainDestroy(g_swapchain);
 			dkMemBlockDestroy(g_framebuffer_memblock);
 			create_swapchain(width, height);
 		}
 
 		/* Build a DkImage for the source PSVita-configured framebuffer */
-		dkimage_for_existing_framebuffer(&src_image, base, width, height, stride, pixelfmt);
+		if (!dkimage_for_existing_framebuffer(&src_image, base, width, height, stride, pixelfmt))
+			goto next_frame_sleep;
 
 		/* Acquire a framebuffer from the swapchain */
 		dkSwapchainAcquireImage(g_swapchain, &slot, &acquire_fence);
@@ -184,6 +187,11 @@ static void presenter_thread_func(void *arg)
 
 		/* The transfer has finished and the queue is idle, we can reset the command buffer */
 		dkCmdBufClear(g_cmdbuf);
+
+		continue;
+
+next_frame_sleep:
+		svcSleepThread(16666667ull);
 	}
 
 	threadExit();
@@ -264,12 +272,18 @@ int SceDisplay_finish(void)
 	Result res;
 
 	leventClear(&g_presenter_thread_run);
+	condvarWakeAll(&g_vblank_condvar);
 
 	res = threadWaitForExit(&g_presenter_thread);
 	if (R_FAILED(res)) {
 		LOG("Error waiting for the presenter thread to finish: 0x%lx", res);
 		return res;
 	}
+
+	dkQueueWaitIdle(g_transfer_queue);
+	dkCmdBufDestroy(g_cmdbuf);
+	dkMemBlockDestroy(g_cmdbuf_memblock);
+	dkQueueDestroy(g_transfer_queue);
 
 	return 0;
 }

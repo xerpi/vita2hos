@@ -152,6 +152,8 @@ void NORETURN fatal_error(const char *dialog_message, const char *fullscreen_mes
 	extern u32 __nx_applet_exit_mode;
 	ErrorApplicationConfig c;
 
+	LOG("%s %s", dialog_message, fullscreen_message);
+
 	errorApplicationCreate(&c, dialog_message, fullscreen_message);
 	errorApplicationShow(&c);
 
@@ -166,6 +168,5 @@ void NORETURN __assert_func(const char *file, int line, const char *func, const 
 	snprintf(message, sizeof(message), "assertion \"%s\" failed: file \"%s\", line %d%s%s\n",
 		failedexpr, file, line, func ? ", function: " : "", func ? func : "");
 
-	LOGSTR(message);
 	fatal_error("Assertion failed.", message);
 }
