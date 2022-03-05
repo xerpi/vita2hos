@@ -38,23 +38,23 @@ include $(DEVKITPRO)/libnx32/switch32_rules
 #   NACP building is skipped as well.
 #---------------------------------------------------------------------------------
 
-VITA2HOS_MAJOR	:=	0
-VITA2HOS_MINOR	:=	1
-VITA2HOS_PATCH	:=	0
-VITA2HOS_HASH	:=	"$(shell git describe --dirty --always --exclude '*')"
+VITA2HOS_MAJOR	:= 0
+VITA2HOS_MINOR	:= 1
+VITA2HOS_PATCH	:= 0
+VITA2HOS_HASH	:= "$(shell git describe --dirty --always --exclude '*')"
 
 APP_TITLE	:= vita2hos
 APP_AUTHOR	:= xerpi
 APP_VERSION	:= $(VITA2HOS_MAJOR).$(VITA2HOS_MINOR).$(VITA2HOS_PATCH)
 APP_TITLEID	:= 0101000000000010
 
-TARGET		:=	$(notdir $(CURDIR))
-BUILD		:=	build
-SOURCES		:=	source source/modules
-DATA		:=	data
-INCLUDES	:=	include include/modules
-SHADER		:=	shader
-#ROMFS		:=	romfs
+TARGET		:= $(notdir $(CURDIR))
+BUILD		:= build
+SOURCES		:= source source/modules
+DATA		:= data
+INCLUDES	:= include include/modules
+SHADER		:= shader
+#ROMFS		:= romfs
 
 DEFINES		:= -DVITA2HOS_MAJOR=\"$(VITA2HOS_MAJOR)\" -DVITA2HOS_MINOR=\"$(VITA2HOS_MINOR)\" \
 		   -DVITA2HOS_PATCH=\"$(VITA2HOS_PATCH)\" -DVITA2HOS_HASH=\"$(VITA2HOS_HASH)\"
