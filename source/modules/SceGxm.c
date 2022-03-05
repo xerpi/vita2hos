@@ -215,8 +215,8 @@ typedef struct SceGxmProgramParameter {
 } SceGxmProgramParameter;
 
 typedef struct {
-	DkFence new_fence;
-	DkFence old_fence;
+	DkFence *new_fence;
+	DkFence *old_fence;
 	void *callback_data;
 } DisplayQueueEntry;
 
@@ -775,14 +775,17 @@ static int SceGxmDisplayQueue_thread(SceSize args, void *argp)
 			if (queue->exit_thread)
 				break;
 
-			/* Pop fence, wait for the rendering to finish, and call the callback */
+			/* Get the first pending framebuffer swap */
 			entry = &queue->entries[queue->tail];
-			dkFenceWait(&entry->new_fence, -1);
 
+			/* Wait until rendering finishes */
+			dkFenceWait(entry->new_fence, -1);
+
+			/* Call the user-specified callback: this sets the new framebuffer */
 			queue->display_queue_callback(entry->callback_data);
 
 			/* Signal that the old buffer has swapped out, so it can be rendered to again */
-			// dkFenceSignal(&entry->old_fence);
+			// dkFenceSignal(entry->old_fence);
 
 			queue->tail = (queue->tail + 1) & (queue->num_entries - 1);
 			ueventSignal(&queue->ready_evflag);
@@ -803,6 +806,7 @@ int sceGxmDisplayQueueAddEntry(SceGxmSyncObject *oldBuffer, SceGxmSyncObject *ne
 
 	LOG("sceGxmDisplayQueueAddEntry: old: %p, new: %p", oldBuffer, newBuffer);
 
+	/* Signal back buffer fence when rendering finishes */
 	dkQueueSignalFence(g_render_queue, &newBuffer->fence, true);
 	dkQueueFlush(g_render_queue);
 
@@ -813,8 +817,8 @@ int sceGxmDisplayQueueAddEntry(SceGxmSyncObject *oldBuffer, SceGxmSyncObject *ne
 	}
 
 	/* Push the fences and the callback data to the display queue */
-	queue->entries[queue->head].new_fence = newBuffer->fence;
-	queue->entries[queue->head].old_fence = oldBuffer->fence;
+	queue->entries[queue->head].new_fence = &newBuffer->fence;
+	queue->entries[queue->head].old_fence = &oldBuffer->fence;
 	memcpy(queue->entries[queue->head].callback_data, callbackData,
 	       queue->display_queue_callback_data_size);
 	queue->head = (queue->head + 1) & (queue->num_entries - 1);
