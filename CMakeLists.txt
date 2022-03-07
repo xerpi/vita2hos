@@ -35,6 +35,7 @@ include_directories(
 )
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -idirafter $ENV{VITASDK}/arm-vita-eabi/include")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -idirafter $ENV{VITASDK}/arm-vita-eabi/include")
 
 set(VERTEX_SHADERS
 	shader/basic_vsh.glsl
@@ -99,10 +100,22 @@ add_executable(${CMAKE_PROJECT_NAME}.elf
 	${SHADER_OBJECTS}
 )
 
+# Vita3K bridge libraries
+add_subdirectory(vita3k/util)
+
+# Vita3K libraries
+include_directories(
+	include/vita3k
+	Vita3K/external/rpcs3/include
+)
+add_subdirectory(Vita3K/vita3k/gxm)
+
 target_link_libraries(${CMAKE_PROJECT_NAME}.elf
 	${DEKO3DD_LIBRARY}
 	${NX_LIBRARY}
 	m
+	# Vita3K libraries
+	gxm
 )
 
 switch_create_nso(
