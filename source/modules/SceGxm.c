@@ -13,8 +13,15 @@
 #include "utils.h"
 #include "log.h"
 
-#include "basic_vsh_dksh.h"
-#include "color_fsh_dksh.h"
+extern const char _binary_basic_vsh_dksh_start, _binary_basic_vsh_dksh_end;
+static const uint8_t *const basic_vsh_dksh_start = &_binary_basic_vsh_dksh_start;
+static const uint8_t *const basic_vsh_dksh_end = &_binary_basic_vsh_dksh_end;
+#define basic_vsh_dksh_size ((uintptr_t)basic_vsh_dksh_end - (uintptr_t)basic_vsh_dksh_start)
+
+extern const char _binary_color_fsh_dksh_start, _binary_color_fsh_dksh_end;
+static const uint8_t *const color_fsh_dksh_start = &_binary_color_fsh_dksh_start;
+static const uint8_t *const color_fsh_dksh_end = &_binary_color_fsh_dksh_end;
+#define color_fsh_dksh_size ((uintptr_t)color_fsh_dksh_end - (uintptr_t)color_fsh_dksh_start)
 
 #define SCE_GXM_NOTIFICATION_COUNT	512
 
@@ -344,8 +351,8 @@ int sceGxmInitialize(const SceGxmInitializeParams *params)
 
 	/* Load shaders */
 	g_code_mem_offset = 0;
-	load_shader_memory(g_code_memblock, &g_vertexShader, &g_code_mem_offset, basic_vsh_dksh, basic_vsh_dksh_size);
-	load_shader_memory(g_code_memblock, &g_fragmentShader, &g_code_mem_offset, color_fsh_dksh, color_fsh_dksh_size);
+	load_shader_memory(g_code_memblock, &g_vertexShader, &g_code_mem_offset, basic_vsh_dksh_start, basic_vsh_dksh_size);
+	load_shader_memory(g_code_memblock, &g_fragmentShader, &g_code_mem_offset, color_fsh_dksh_start, color_fsh_dksh_size);
 
 	g_gxm_initialized = true;
 	return 0;
