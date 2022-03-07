@@ -1,0 +1,4 @@
+[submodule "Vita3K"]
+	path = Vita3K
+	url = https://github.com/xerpi/Vita3K.git
+	branch = gxm-split-public-internal-types

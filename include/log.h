@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdbool.h>
+#include "utils.h"
 
 #define DEBUG
 #define VERBOSE_LOGGING

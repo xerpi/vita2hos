@@ -19,6 +19,10 @@
 #define STRINGIFY(x)	#x
 #define TOSTRING(x)	STRINGIFY(x)
 
+#ifndef NORETURN
+#define NORETURN   __attribute__((noreturn))
+#endif
+
 static inline uint32_t next_pow2(uint32_t x)
 {
 	uint32_t val = 1;

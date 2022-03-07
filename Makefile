@@ -50,9 +50,10 @@ APP_TITLEID	:= 0101000000000010
 
 TARGET		:= $(notdir $(CURDIR))
 BUILD		:= build
-SOURCES		:= source source/modules
+SOURCES		:= source source/modules Vita3K/vita3k/gxm/src Vita3K/vita3k/shader/src
 DATA		:= data
-INCLUDES	:= include include/modules
+INCLUDES	:= include include/modules Vita3K/vita3k/gxm/include Vita3K/vita3k/shader/include \
+		   Vita3K/external/rpcs3/include
 SHADER		:= shader
 #ROMFS		:= romfs
 
