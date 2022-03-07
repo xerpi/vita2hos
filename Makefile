@@ -50,14 +50,18 @@ APP_TITLEID	:= 0101000000000010
 
 TARGET		:= $(notdir $(CURDIR))
 BUILD		:= build
-SOURCES		:= source source/modules
+SOURCES		:= source source/modules Vita3K/vita3k/gxm/src Vita3K/vita3k/shader/src \
+		   Vita3K/vita3k/shader/src/translator
 DATA		:= data
-INCLUDES	:= include include/modules
+INCLUDES	:= include include/modules include/vita3k Vita3K/vita3k/gxm/include Vita3K/vita3k/shader/include \
+		   Vita3K/vita3k/shader/src/translator Vita3K/vita3k/features/include Vita3K/vita3k/util/include \
+		   Vita3K/external/rpcs3/include
 SHADER		:= shader
 #ROMFS		:= romfs
 
 DEFINES		:= -DVITA2HOS_MAJOR=\"$(VITA2HOS_MAJOR)\" -DVITA2HOS_MINOR=\"$(VITA2HOS_MINOR)\" \
-		   -DVITA2HOS_PATCH=\"$(VITA2HOS_PATCH)\" -DVITA2HOS_HASH=\"$(VITA2HOS_HASH)\"
+		   -DVITA2HOS_PATCH=\"$(VITA2HOS_PATCH)\" -DVITA2HOS_HASH=\"$(VITA2HOS_HASH)\" \
+		   -DSPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS -DVITA3K_CPP17
 
 #---------------------------------------------------------------------------------
 # options for code generation
@@ -74,7 +78,8 @@ CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions
 ASFLAGS	:=	-g $(ARCH)
 LDFLAGS	=	-specs=$(DEVKITPRO)/libnx32/switch32.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
-LIBS	:= -ldeko3dd -lnx -lm
+LIBS	:= -lSPIRV -lspirv-cross-c -lspirv-cross-core -lspirv-cross-cpp -lspirv-cross-glsl \
+	   -lspirv-cross-reflect -lspirv-cross-util -lglslang -lfmt -luam -ldeko3dd -lnx -lm
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
@@ -128,6 +133,9 @@ export HFILES_BIN	:=	$(addsuffix .h,$(subst .,_,$(BINFILES))) \
 export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 			$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
 			-I$(CURDIR)/$(BUILD) \
+			-I$(LIBNX)/include/spirv_cross \
+			-I$(LIBNX)/include/glslang \
+			-I$(LIBNX)/include/uam/mesa-imported \
 			-idirafter $(VITASDK)/arm-vita-eabi/include
 
 export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib)

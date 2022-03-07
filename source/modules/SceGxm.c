@@ -12,9 +12,15 @@
 #include "protected_bitset.h"
 #include "util.h"
 #include "log.h"
+#include "vita3k_shader_recompiler_iface_c.h"
+#include "uam_compiler_iface_c.h"
 
 #include "basic_vsh_dksh.h"
 #include "color_fsh_dksh.h"
+
+#define DUMP_SHADER_SPIRV	1
+#define DUMP_SHADER_GLSL	1
+#define ENABLE_SHADER_DUMP_CB	0
 
 #define SCE_GXM_NOTIFICATION_COUNT	512
 
@@ -64,6 +70,7 @@ typedef struct SceGxmVertexProgram {
 	unsigned int attributeCount;
 	SceGxmVertexStream *streams;
 	unsigned int streamCount;
+	DkShader dk_shader;
 } SceGxmVertexProgram;
 
 typedef struct SceGxmFragmentProgram {
@@ -71,6 +78,7 @@ typedef struct SceGxmFragmentProgram {
 	SceGxmOutputRegisterFormat outputFormat;
 	SceGxmMultisampleMode multisampleMode;
 	SceGxmBlendInfo blendInfo;
+	DkShader dk_shader;
 } SceGxmFragmentProgram;
 
 typedef struct SceGxmRenderTarget {
@@ -234,6 +242,22 @@ typedef struct {
 	UEvent pending_evflag;
 } DisplayQueueControlBlock;
 
+/* Vita3K's shader recompiler */
+struct GXMRenderVertUniformBlock {
+	float viewport_flip[4];
+	float viewport_flag;
+	float screen_width;
+	float screen_height;
+};
+
+struct GXMRenderFragUniformBlock {
+	float back_disabled;
+	float front_disabled;
+	float writing_mask;
+};
+
+/* Global state */
+
 static bool g_gxm_initialized;
 
 /* Deko3D */
@@ -287,6 +311,51 @@ static void load_shader_memory(DkMemBlock memblock, DkShader *shader, uint32_t *
 
 	*offset += ALIGN(size, DK_SHADER_CODE_ALIGNMENT);
 }
+
+#if DUMP_SHADER_SPIRV
+static void dump_shader_spirv(const char *prefix, const uint32_t *spirv, uint32_t num_instr)
+{
+	static uint32_t cnt = 0;
+	FILE *fp;
+	char name[128];
+
+	snprintf(name, sizeof(name), "%s_%d.spv", prefix, cnt++);
+
+	fp = fopen(name, "wb");
+	if (!fp)
+		return;
+	fwrite(spirv, num_instr, sizeof(uint32_t), fp);
+	fclose(fp);
+}
+#endif
+
+#if DUMP_SHADER_GLSL
+static void dump_shader_glsl(const char *prefix, const char *glsl)
+{
+	static uint32_t cnt = 0;
+	FILE *fp;
+	char name[128];
+
+	snprintf(name, sizeof(name), "%s_%d.glsl", prefix, cnt++);
+
+	fp = fopen(name, "w");
+	if (!fp)
+		return;
+	fputs(glsl, fp);
+	fclose(fp);
+}
+#endif
+
+#if ENABLE_SHADER_DUMP_CB
+static bool shader_dump_cb(const char *ext, const char *dump)
+{
+	LOG("Shader dumper CB: %s: %s", ext, dump);
+	return true;
+}
+#define SHADER_DUMP_CB shader_dump_cb
+#else
+#define SHADER_DUMP_CB NULL
+#endif
 
 int sceGxmInitialize(const SceGxmInitializeParams *params)
 {
@@ -518,6 +587,52 @@ int sceGxmShaderPatcherUnregisterProgram(SceGxmShaderPatcher *shaderPatcher,
 	return 0;
 }
 
+static int translate_shader(DkShader *shader, const SceGxmProgram *program, pipeline_stage stage,
+			    const char *prefix, DkMemBlock code_memblock, uint32_t *code_offset,
+			    const SceGxmVertexAttribute *attributes, unsigned int attributeCount)
+{
+	bool ret;
+	char *glsl;
+	uint32_t shader_size;
+	DkShaderMaker shader_maker;
+	void *shader_load_addr = dkMemBlockGetCpuAddr(code_memblock) + *code_offset;
+
+#if DUMP_SHADER_SPIRV
+	uint32_t *spirv;
+	uint32_t num_instr;
+
+	ret = convert_gxp_to_spirv_c(&spirv, &num_instr, program, prefix,
+				     false, false, false, false, attributes, attributeCount,
+				     false, true, SHADER_DUMP_CB);
+	if (ret) {
+		dump_shader_spirv(prefix, spirv, num_instr);
+		free(spirv);
+	}
+#endif
+
+	LOG("Converting shader (%s) to GLSL...", prefix);
+	ret = convert_gxp_to_glsl_c(&glsl, program, prefix, false, false, false,
+				    false, attributes, attributeCount, false, true, SHADER_DUMP_CB);
+	LOG("  ret: %d", ret);
+#if DUMP_SHADER_GLSL
+	if (ret)
+		dump_shader_glsl(prefix, glsl);
+#endif
+	if (!ret)
+		return SCE_GXM_ERROR_INVALID_VALUE;
+
+	LOG("UAM compiling shader (%s)...", prefix);
+	ret = uam_compiler_compile_glsl(stage, glsl, shader_load_addr, &shader_size);
+	LOG("  compile ret: %d, size: 0x%x", ret, shader_size);
+	free(glsl);
+
+	dkShaderMakerDefaults(&shader_maker, code_memblock, *code_offset);
+	dkShaderInitialize(shader, &shader_maker);
+	*code_offset += ALIGN(shader_size, DK_SHADER_CODE_ALIGNMENT);
+
+	return 0;
+}
+
 int sceGxmShaderPatcherCreateVertexProgram(SceGxmShaderPatcher *shaderPatcher,
 					   SceGxmShaderPatcherId programId,
 					   const SceGxmVertexAttribute *attributes,
@@ -526,6 +641,7 @@ int sceGxmShaderPatcherCreateVertexProgram(SceGxmShaderPatcher *shaderPatcher,
 					   unsigned int streamCount,
 					   SceGxmVertexProgram **vertexProgram)
 {
+	int ret;
 	SceGxmVertexProgram *vertex_program;
 
 	vertex_program = malloc(sizeof(*vertex_program));
@@ -540,6 +656,15 @@ int sceGxmShaderPatcherCreateVertexProgram(SceGxmShaderPatcher *shaderPatcher,
 	vertex_program->streams = calloc(streamCount, sizeof(SceGxmVertexStream));
 	memcpy(vertex_program->streams, streams, streamCount * sizeof(SceGxmVertexStream));
 	vertex_program->streamCount = streamCount;
+
+	ret = translate_shader(&vertex_program->dk_shader, programId->programHeader,
+			       pipeline_stage_vertex, "vert",
+			       g_code_memblock, &g_code_mem_offset,
+			       attributes, attributeCount);
+	if (ret != 0) {
+		free(vertex_program);
+		return ret;
+	}
 
 	*vertexProgram = vertex_program;
 
@@ -563,6 +688,7 @@ int sceGxmShaderPatcherCreateFragmentProgram(SceGxmShaderPatcher *shaderPatcher,
 					     const SceGxmProgram *vertexProgram,
 					     SceGxmFragmentProgram **fragmentProgram)
 {
+	int ret;
 	SceGxmFragmentProgram *fragment_program;
 
 	fragment_program = malloc(sizeof(*fragment_program));
@@ -575,6 +701,15 @@ int sceGxmShaderPatcherCreateFragmentProgram(SceGxmShaderPatcher *shaderPatcher,
 	fragment_program->multisampleMode = multisampleMode;
 	if (blendInfo)
 		fragment_program->blendInfo = *blendInfo;
+
+	ret = translate_shader(&fragment_program->dk_shader, programId->programHeader,
+			       pipeline_stage_fragment, "frag",
+			       g_code_memblock, &g_code_mem_offset,
+			       NULL, 0);
+	if (ret != 0) {
+		free(fragment_program);
+		return ret;
+	}
 
 	*fragmentProgram = fragment_program;
 
@@ -680,7 +815,6 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 	DkColorWriteState color_write_state;
 	DkViewport viewport = { 0.0f, 0.0f, (float)renderTarget->params.width, (float)renderTarget->params.height, 0.0f, 1.0f };
 	DkScissor scissor = { 0, 0, renderTarget->params.width, renderTarget->params.height };
-	DkShader const* shaders[] = { &g_vertexShader, &g_fragmentShader };
 	SceGxmColorSurfaceInner *color_surface_inner = (SceGxmColorSurfaceInner *)colorSurface;
 
 	if (context->scene.valid)
@@ -708,7 +842,6 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 
 	dkCmdBufSetViewports(context->cmdbuf, 0, &viewport, 1);
 	dkCmdBufSetScissors(context->cmdbuf, 0, &scissor, 1);
-	dkCmdBufBindShaders(context->cmdbuf, DkStageFlag_GraphicsMask, shaders, ARRAY_SIZE(shaders));
 	dkCmdBufBindRasterizerState(context->cmdbuf, &rasterizer_state);
 	dkCmdBufBindColorState(context->cmdbuf, &color_state);
 	dkCmdBufBindColorWriteState(context->cmdbuf, &color_write_state);
@@ -719,6 +852,37 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 	context->vertex_ringbuf.head = 0;
 	context->fragment_ringbuf.head = 0;
 	context->scene.valid = true;
+
+	/* GXMRenderVertUniformBlock */
+	DkBufExtents buf_extents;
+	uint32_t uniform_buf_size;
+	struct GXMRenderVertUniformBlock v_unif = {
+		.viewport_flip = {1.0f, 1.0f, 1.0f, 1.0f},
+		.viewport_flag = (0) ? 0.0f : 1.0f,
+		.screen_width = 960.0f,
+		.screen_height = 544.0f
+	};
+	uniform_buf_size = ALIGN(sizeof(struct GXMRenderVertUniformBlock), DK_UNIFORM_BUF_ALIGNMENT);
+	buf_extents.addr = dkMemBlockGetGpuAddr(context->vertex_ringbuf.memblock) + context->vertex_ringbuf.head;
+	buf_extents.size = uniform_buf_size;
+	void *unif_data = dkMemBlockGetCpuAddr(context->vertex_ringbuf.memblock) + context->vertex_ringbuf.head;
+	memcpy(unif_data, &v_unif, sizeof(v_unif));
+	dkCmdBufBindUniformBuffers(context->cmdbuf, DkStage_Vertex, 2 /* hardcoded */, &buf_extents, 1);
+	context->vertex_ringbuf.head += uniform_buf_size;
+
+	/* GXMRenderFragUniformBlock */
+	struct GXMRenderFragUniformBlock f_unif = {
+		.back_disabled = 0.0f,
+		.front_disabled = 0.0f,
+		.writing_mask = 1.0f
+	};
+	uniform_buf_size = ALIGN(sizeof(struct GXMRenderFragUniformBlock), DK_UNIFORM_BUF_ALIGNMENT);
+	buf_extents.addr = dkMemBlockGetGpuAddr(context->fragment_ringbuf.memblock) + context->fragment_ringbuf.head;
+	buf_extents.size = uniform_buf_size;
+	unif_data = dkMemBlockGetCpuAddr(context->fragment_ringbuf.memblock) + context->fragment_ringbuf.head;
+	memcpy(unif_data, &f_unif, sizeof(f_unif));
+	dkCmdBufBindUniformBuffers(context->cmdbuf, DkStage_Fragment, 3 /* hardcoded */, &buf_extents, 1);
+	context->fragment_ringbuf.head += uniform_buf_size;
 
 	return 0;
 }
@@ -891,7 +1055,6 @@ int sceGxmReserveVertexDefaultUniformBuffer(SceGxmContext *context, void **unifo
 {
 	DkBufExtents buf_extents;
 	uint32_t default_uniform_buffer_count;
-	uint32_t uniform_buf_size;
 	const SceGxmProgram *program;
 
 	if (!context->scene.valid)
@@ -907,15 +1070,13 @@ int sceGxmReserveVertexDefaultUniformBuffer(SceGxmContext *context, void **unifo
 		return 0;
 	}
 
-	uniform_buf_size = ALIGN(default_uniform_buffer_count * sizeof(float), DK_UNIFORM_BUF_ALIGNMENT);
-
 	buf_extents.addr = dkMemBlockGetGpuAddr(context->vertex_ringbuf.memblock) + context->vertex_ringbuf.head;
-	buf_extents.size = uniform_buf_size;
+	buf_extents.size = default_uniform_buffer_count * sizeof(float);
 
-	dkCmdBufBindUniformBuffers(context->cmdbuf, DkStage_Vertex, 0, &buf_extents, 1);
+	dkCmdBufBindStorageBuffers(context->cmdbuf, DkStage_Vertex, 0, &buf_extents, 1);
 
 	*uniformBuffer = dkMemBlockGetCpuAddr(context->vertex_ringbuf.memblock) + context->vertex_ringbuf.head;
-	context->vertex_ringbuf.head += uniform_buf_size;
+	context->vertex_ringbuf.head += buf_extents.size;
 
 	return 0;
 }
@@ -924,7 +1085,6 @@ int sceGxmReserveFragmentDefaultUniformBuffer(SceGxmContext *context, void **uni
 {
 	DkBufExtents buf_extents;
 	uint32_t default_uniform_buffer_count;
-	uint32_t uniform_buf_size;
 	const SceGxmProgram *program;
 
 	if (!context->scene.valid)
@@ -940,15 +1100,13 @@ int sceGxmReserveFragmentDefaultUniformBuffer(SceGxmContext *context, void **uni
 		return 0;
 	}
 
-	uniform_buf_size = ALIGN(default_uniform_buffer_count * sizeof(float), DK_UNIFORM_BUF_ALIGNMENT);
-
 	buf_extents.addr = dkMemBlockGetGpuAddr(context->fragment_ringbuf.memblock) + context->fragment_ringbuf.head;
-	buf_extents.size = uniform_buf_size;
+	buf_extents.size = default_uniform_buffer_count * sizeof(float);
 
-	dkCmdBufBindUniformBuffers(context->cmdbuf, DkStage_Fragment, 0, &buf_extents, 1);
+	dkCmdBufBindStorageBuffers(context->cmdbuf, DkStage_Fragment, 1, &buf_extents, 1);
 
 	*uniformBuffer = dkMemBlockGetCpuAddr(context->fragment_ringbuf.memblock) + context->fragment_ringbuf.head;
-	context->fragment_ringbuf.head += uniform_buf_size;
+	context->fragment_ringbuf.head += buf_extents.size;
 
 	return 0;
 }
@@ -988,12 +1146,16 @@ int sceGxmDraw(SceGxmContext *context, SceGxmPrimitiveType primType, SceGxmIndex
 {
 	VitaMemBlockInfo *index_block;
 	uint32_t index_offset;
+	DkShader const *shaders[] = {&context->vertex_program->dk_shader, &context->fragment_program->dk_shader};
 
 	LOG("sceGxmDraw: primType: 0x%x, indexCount: %d", primType, indexCount);
 
 	index_block = SceSysmem_get_vita_memblock_info_for_addr(indexData);
 	if (!index_block)
 		return SCE_GXM_ERROR_INVALID_VALUE;
+
+	/* TODO: Dirty tracking */
+	dkCmdBufBindShaders(context->cmdbuf, DkStageFlag_GraphicsMask, shaders, ARRAY_SIZE(shaders));
 
 	index_offset = (uintptr_t)indexData - (uintptr_t)index_block->base;
 	dkCmdBufBindIdxBuffer(context->cmdbuf, gxm_to_dk_idx_format(indexType),
