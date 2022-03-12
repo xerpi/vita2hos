@@ -30,10 +30,18 @@
 #define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 //#define LOG(...)        {printf("%s:%d: ", __FILENAME__, __LINE__); printf(__VA_ARGS__); puts("");}  ///< Write a log entry
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 extern bool log_to_fb_console;
 
 void LOGSTR(const char *str);
 void __attribute__((format(printf, 1, 2))) LOG(const char *fmt, ...);
 void NORETURN fatal_error(const char *dialog_message, const char *fullscreen_message);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
