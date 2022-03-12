@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <inttypes.h>
+#include "util.h"
 
 #define DEBUG
 #define VERBOSE_LOGGING

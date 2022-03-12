@@ -6,7 +6,7 @@
 #include "SceDisplay.h"
 #include "SceSysmem.h"
 #include "module.h"
-#include "utils.h"
+#include "util.h"
 #include "vita_to_dk.h"
 #include "log.h"
 

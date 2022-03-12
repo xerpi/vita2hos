@@ -1,9 +1,9 @@
 #include <stdlib.h>
 #include <switch.h>
 #include "log.h"
-#include "utils.h"
+#include "util.h"
 
-int utils_load_file(const char *filename, void **data, uint32_t *size)
+int util_load_file(const char *filename, void **data, uint32_t *size)
 {
 	FsFileSystem *fs;
 	FsFile file;

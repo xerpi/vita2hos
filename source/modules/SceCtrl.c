@@ -3,7 +3,7 @@
 #include <switch.h>
 #include <psp2/ctrl.h>
 #include "module.h"
-#include "utils.h"
+#include "util.h"
 #include "log.h"
 
 static PadState g_pad;

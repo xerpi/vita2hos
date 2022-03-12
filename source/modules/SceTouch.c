@@ -3,7 +3,7 @@
 #include <switch.h>
 #include <psp2/touch.h>
 #include "module.h"
-#include "utils.h"
+#include "util.h"
 #include "log.h"
 
 #define MAX_TOUCH_STATES 8

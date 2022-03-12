@@ -1,7 +1,7 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <switch.h>
-#include "utils.h"
+#include "util.h"
 
 bool log_to_fb_console;
 

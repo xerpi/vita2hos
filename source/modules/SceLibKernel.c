@@ -15,7 +15,7 @@
 #include "SceSysmem.h"
 #include "module.h"
 #include "protected_bitset.h"
-#include "utils.h"
+#include "util.h"
 #include "log.h"
 
 #define MAX_OPENED_FILES 32

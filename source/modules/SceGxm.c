@@ -10,7 +10,7 @@
 #include "vita_to_dk.h"
 #include "module.h"
 #include "protected_bitset.h"
-#include "utils.h"
+#include "util.h"
 #include "log.h"
 
 #include "basic_vsh_dksh.h"

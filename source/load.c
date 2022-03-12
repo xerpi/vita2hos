@@ -10,7 +10,7 @@
 #include "miniz.h"
 #include "sce-elf.h"
 #include "self.h"
-#include "utils.h"
+#include "util.h"
 
 #define IMP_GET_NEXT(imp) ((sce_module_imports_u_t *)((char *)imp + imp->size))
 #define IMP_GET_FUNC_COUNT(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.num_syms_funcs : imp->imports.num_syms_funcs)
@@ -110,7 +110,7 @@ int load_exe(Jit *jit, const char *filename, void **entry)
 	int ret = 0;
 
 	LOG("Opening %s for reading.", filename);
-	if (utils_load_file(filename, &data, &size) != 0) {
+	if (util_load_file(filename, &data, &size) != 0) {
 		LOG("Cannot load file.");
 		return -1;
 	}

@@ -1,5 +1,5 @@
-#ifndef UTILS_H
-#define UTILS_H
+#ifndef UTIL_H
+#define UTIL_H
 
 #include <assert.h>
 #include <stdio.h>
@@ -19,6 +19,10 @@
 #define STRINGIFY(x)	#x
 #define TOSTRING(x)	STRINGIFY(x)
 
+#ifndef NORETURN
+#define NORETURN __attribute__((noreturn))
+#endif
+
 static inline uint32_t next_pow2(uint32_t x)
 {
 	uint32_t val = 1;
@@ -29,6 +33,6 @@ static inline uint32_t next_pow2(uint32_t x)
 	return val;
 }
 
-int utils_load_file(const char *filename, void **data, uint32_t *size);
+int util_load_file(const char *filename, void **data, uint32_t *size);
 
 #endif
