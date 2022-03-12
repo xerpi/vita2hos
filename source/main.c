@@ -101,6 +101,8 @@ int main(int argc, char *argv[])
 	void *entry;
 	int ret;
 
+	consoleDebugInit(debugDevice_SVC);
+
 	log_to_fb_console = false;
 
 	LOG("vita2hos " VITA2HOS_MAJOR "." VITA2HOS_MINOR "." VITA2HOS_PATCH "-" VITA2HOS_HASH
