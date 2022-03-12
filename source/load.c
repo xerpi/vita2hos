@@ -93,7 +93,7 @@ static int elf_get_sce_module_info(Elf32_Addr e_entry, const segment_info_t *seg
 	offset = e_entry & 0x3FFFFFFF;
 
 	if (segments[index].src_data == NULL) {
-		LOG("Invalid segment index %ld\n", index);
+		LOG("Invalid segment index %" PRId32, index);
 		return -1;
 	}
 
@@ -161,7 +161,7 @@ static int load_self(Jit *jit, const void *data, void **entry)
 	}
 
 	if (self_header->version != 3) {
-		LOG("SELF version 0x%lx is not supported.", self_header->version);
+		LOG("SELF version 0x%" PRIx32 " is not supported.", self_header->version);
 		return -1;
 	}
 
@@ -244,7 +244,7 @@ static int load_self(Jit *jit, const void *data, void **entry)
 				segments[i].src_data = seg_bytes;
 			}
 		} else {
-			LOG("Unknown segment type 0x%lx", seg_header->p_type);
+			LOG("Unknown segment type 0x%" PRIx32, seg_header->p_type);
 		}
 	}
 
@@ -324,12 +324,12 @@ static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_inf
 		}
 	}
 
-	LOG("Total needed code size: 0x%lx", code_size);
-	LOG("Total needed data size: 0x%lx", data_size);
+	LOG("Total needed code size: 0x%" PRIx32, code_size);
+	LOG("Total needed data size: 0x%" PRIx32, data_size);
 
 	res = jitCreate(jit, code_size);
 	if (R_FAILED(res)) {
-		LOG("jitCreate failed: 0x%lx", res);
+		LOG("jitCreate failed: 0x%" PRIx32, res);
 		return -1;
 	}
 
@@ -348,16 +348,16 @@ static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_inf
 
 	res = jitTransitionToWritable(jit);
 	if (R_FAILED(res)) {
-		LOG("Could not transition JIT to writable: 0x%lx", res);
+		LOG("Could not transition JIT to writable: 0x%" PRIx32, res);
 		goto err_free_data;
 	}
 
 	for (int i = 0; i < num_segments; i++) {
 		if (segments[i].p_type == PT_LOAD) {
 			LOG("Found loadable segment (%u)", i);
-			LOG("  p_filesz: 0x%lx", segments[i].p_filesz);
-			LOG("  p_memsz:  0x%lx", segments[i].p_align);
-			LOG("  p_align:  0x%lx", segments[i].p_align);
+			LOG("  p_filesz: 0x%" PRIx32, segments[i].p_filesz);
+			LOG("  p_memsz:  0x%" PRIx32, segments[i].p_align);
+			LOG("  p_align:  0x%" PRIx32, segments[i].p_align);
 
 			if ((segments[i].p_flags & PF_X) == PF_X) {
 				length = ALIGN(code_rx_addr, segments[i].p_align) - code_rx_addr;
@@ -398,11 +398,11 @@ static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_inf
 		goto err_free_data;
 	}
 	LOG("Module name: %s", mod_info->name);
-	LOG("  export table offset: 0x%lx", mod_info->export_top);
-	LOG("  import table offset: 0x%lx", mod_info->import_top);
-	LOG("  tls start: 0x%lx", mod_info->tls_start);
-	LOG("  tls filesz: 0x%lx", mod_info->tls_filesz);
-	LOG("  tls memsz: 0x%lx", mod_info->tls_memsz);
+	LOG("  export table offset: 0x%" PRIx32, mod_info->export_top);
+	LOG("  import table offset: 0x%" PRIx32, mod_info->import_top);
+	LOG("  tls start: 0x%" PRIx32, mod_info->tls_start);
+	LOG("  tls filesz: 0x%" PRIx32, mod_info->tls_filesz);
+	LOG("  tls memsz: 0x%" PRIx32, mod_info->tls_memsz);
 
 	/* Resolve NIDs */
 	sce_module_imports_u_t *import = (void *)(segments[mod_info_idx].rw_addr + mod_info->import_top);
@@ -420,13 +420,13 @@ static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_inf
 	/* Find the entry point (address belonging to the RX JIT area) */
 	*entry = (char *)segments[mod_info_idx].rx_addr + mod_info->module_start;
 	if (*entry == NULL) {
-		LOG("Invalid module entry function.\n");
+		LOG("Invalid module entry function.");
 		goto err_free_data;
 	}
 
 	res = jitTransitionToExecutable(jit);
 	if (R_FAILED(res)) {
-		LOG("Could not transition JIT to executable: 0x%lx", res);
+		LOG("Could not transition JIT to executable: 0x%" PRIx32, res);
 		goto err_free_data;
 	}
 
@@ -462,13 +462,13 @@ static int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_impo
 			stub[0] = arm_encode_movw(0, (uint16_t)SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID);
 			stub[1] = arm_encode_movt(0, (uint16_t)(SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID >> 16));
 			stub[2] = arm_encode_ret();
-			LOG("  Could not resolve NID 0x%08lx, export not found!", nid);
+			LOG("  Could not resolve NID 0x%08" PRIx32 ", export not found!", nid);
 		}
 	}
 
 	for (uint32_t i = 0; i < IMP_GET_VARS_COUNT(import); i++) {
 		nid = ((uint32_t *)CODE_RX_TO_RW_ADDR(rx_base, rw_base, IMP_GET_VARS_TABLE(import)))[i];
-		IF_VERBOSE LOG("  Trying to resolve variable NID 0x%08lx", nid);
+		IF_VERBOSE LOG("  Trying to resolve variable NID 0x%08" PRIx32, nid);
 		/* TODO */
 		LOG("    Variable NID resolving currently not implemented!");
 	}
@@ -502,7 +502,7 @@ static int relocate(const void *reloc, uint32_t size, segment_info_t *segs)
 			r_offset = SCE_REL_LONG_OFFSET(entry->r_long);
 			r_addend = SCE_REL_LONG_ADDEND(entry->r_long);
 			if (SCE_REL_LONG_CODE2(entry->r_long))
-				IF_VERBOSE LOG("Code2 ignored for relocation at %lx.", pos);
+				IF_VERBOSE LOG("Code2 ignored for relocation at 0x%" PRIx32, pos);
 			pos += 12;
 		}
 
@@ -558,7 +558,7 @@ static int relocate(const void *reloc, uint32_t size, segment_info_t *segs)
 
 			if (offset <= (int32_t)0xff000000 ||
 			    offset >= (int32_t)0x01000000) {
-				LOG("reloc %lx out of range: 0x%08lx", pos, symval);
+				LOG("reloc 0x%" PRIx32 " out of range: 0x%08" PRIx32, pos, symval);
 				break;
 			}
 
@@ -579,7 +579,7 @@ static int relocate(const void *reloc, uint32_t size, segment_info_t *segs)
 			offset = r_addend + symval - loc_rx;
 			if (offset <= (int32_t)0xfe000000 ||
 			    offset >= (int32_t)0x02000000) {
-				LOG("reloc %lx out of range: 0x%08lx", pos, symval);
+				LOG("reloc 0x%" PRIx32 " out of range: 0x%08" PRIx32, pos, symval);
 				break;
 			}
 
@@ -637,7 +637,7 @@ static int relocate(const void *reloc, uint32_t size, segment_info_t *segs)
 		}
 		break;
 		default: {
-			LOG("Unknown relocation code %u at %lx", r_code, pos);
+			LOG("Unknown relocation code %u at 0x%" PRIx32, r_code, pos);
 		}
 		case R_ARM_NONE:
 			continue;

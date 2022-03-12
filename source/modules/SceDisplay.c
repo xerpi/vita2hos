@@ -254,13 +254,13 @@ int SceDisplay_init(DkDevice dk_device)
 
 	res = threadCreate(&g_presenter_thread, presenter_thread_func, NULL, NULL, 0x10000, 28, -2);
 	if (R_FAILED(res)) {
-		LOG("Error creating VSync thread: 0x%lx", res);
+		LOG("Error creating VSync thread: 0x%" PRIx32, res);
 		return res;
 	}
 
 	res = threadStart(&g_presenter_thread);
 	if (R_FAILED(res)) {
-		LOG("Error starting VSync thread: 0x%lx", res);
+		LOG("Error starting VSync thread: 0x%" PRIx32, res);
 		return res;
 	}
 
@@ -276,7 +276,7 @@ int SceDisplay_finish(void)
 
 	res = threadWaitForExit(&g_presenter_thread);
 	if (R_FAILED(res)) {
-		LOG("Error waiting for the presenter thread to finish: 0x%lx", res);
+		LOG("Error waiting for the presenter thread to finish: 0x%" PRIx32, res);
 		return res;
 	}
 

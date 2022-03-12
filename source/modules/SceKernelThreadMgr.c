@@ -81,7 +81,7 @@ static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int in
 
 	res = threadCreate(&ti->thread, thread_entry_wrapper, ti, NULL, stackSize, priority, -2);
 	if (R_FAILED(res)) {
-		LOG("Error creating thread: 0x%lx", res);
+		LOG("Error creating thread: 0x%" PRIx32, res);
 		free(ti->vita_tls);
 		return SCE_KERNEL_ERROR_THREAD_ERROR;
 	}
@@ -110,7 +110,7 @@ static int start_thread(SceUID thid, SceSize arglen, void *argp)
 
 	res = threadStart(&ti->thread);
 	if (R_FAILED(res)) {
-		LOG("Error starting thread 0x%x: 0x%lx", thid, res);
+		LOG("Error starting thread 0x%x: 0x%" PRIx32, thid, res);
 		return SCE_KERNEL_ERROR_THREAD_ERROR;
 	}
 
@@ -134,7 +134,7 @@ int sceKernelDeleteThread(SceUID thid)
 
 	res = threadClose(&ti->thread);
 	if (R_FAILED(res)) {
-		LOG("Error closing thread 0x%x exit: 0x%lx", thid, res);
+		LOG("Error closing thread 0x%x exit: 0x%" PRIx32, thid, res);
 		return SCE_KERNEL_ERROR_THREAD_ERROR;
 	}
 
@@ -180,7 +180,7 @@ int sceKernelWaitThreadEnd(SceUID thid, int *stat, SceUInt *timeout)
 
 	res = waitSingle(waiterForThread(&ti->thread), ns);
 	if (R_FAILED(res)) {
-		LOG("Error waiting for thread 0x%x exit: 0x%lx", thid, res);
+		LOG("Error waiting for thread 0x%x exit: 0x%" PRIx32, thid, res);
 		return SCE_KERNEL_ERROR_THREAD_ERROR;
 	}
 
@@ -212,7 +212,7 @@ int SceKernelThreadMgr_main_entry(SceKernelThreadEntry entry, int args, void *ar
 
 	res = waitSingle(waiterForUEvent(process_exit_event), -1);
 	if (R_FAILED(res)) {
-		LOG("Error waiting for the process to finish: 0x%lx", res);
+		LOG("Error waiting for the process to finish: 0x%" PRIx32, res);
 		return -1;
 	}
 

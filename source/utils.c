@@ -20,13 +20,13 @@ int utils_load_file(const char *filename, void **data, uint32_t *size)
 
 	res = fsFsOpenFile(fs, filename, FsOpenMode_Read, &file);
 	if (R_FAILED(res)) {
-		LOG("load file: error opening \"%s\": 0x%lx", filename, res);
+		LOG("load file: error opening \"%s\": 0x%" PRIx32, filename, res);
 		return -1;
 	}
 
 	res = fsFileGetSize(&file, &filesz);
 	if (R_FAILED(res)) {
-		LOG("load file: could not get file size: 0x%lx", res);
+		LOG("load file: could not get file size: 0x%" PRIx32, res);
 		goto err_close_file;
 	}
 
@@ -38,7 +38,7 @@ int utils_load_file(const char *filename, void **data, uint32_t *size)
 
 	res = fsFileRead(&file, 0, base, filesz, FsReadOption_None, &bytes_read);
 	if (R_FAILED(res)) {
-		LOG("load file: could not read the file: 0x%lx", res);
+		LOG("load file: could not read the file: 0x%" PRIx32, res);
 		goto err_free_data;
 	}
 

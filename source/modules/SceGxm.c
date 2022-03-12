@@ -690,7 +690,7 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 	if (!color_surface_block)
 		return SCE_GXM_ERROR_INVALID_VALUE;
 
-	LOG("sceGxmBeginScene to renderTarget %p, fragmentSyncObject: %p, w: %ld, h: %ld, stride: %ld, CPU addr: %p",
+	LOG("sceGxmBeginScene to renderTarget %p, fragmentSyncObject: %p, w: %" PRId32 ", h: %" PRId32 ", stride: %" PRId32 ", CPU addr: %p",
 		renderTarget, fragmentSyncObject, color_surface_inner->width, color_surface_inner->height,
 		color_surface_inner->strideInPixels,
 		dkMemBlockGetCpuAddr(color_surface_block));
