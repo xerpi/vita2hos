@@ -1115,9 +1115,14 @@ int sceGxmSetUniformDataF(void *uniformBuffer, const SceGxmProgramParameter *par
 			  unsigned int componentOffset, unsigned int componentCount,
 			  const float *sourceData)
 {
-	uint32_t component_size = gxm_parameter_type_size(parameter->type);
-	uint32_t dst_offset = component_size * (parameter->resource_index + componentOffset);
-	uint32_t copy_size = component_size * componentCount;
+	uint32_t component_size, dst_offset, copy_size;
+
+	if (!uniformBuffer || !sourceData)
+		return SCE_GXM_ERROR_INVALID_POINTER;
+
+	component_size = gxm_parameter_type_size(parameter->type);
+	dst_offset = component_size * (parameter->resource_index + componentOffset);
+	copy_size = component_size * componentCount;
 
 	memcpy((char *)uniformBuffer + dst_offset, sourceData, copy_size);
 
