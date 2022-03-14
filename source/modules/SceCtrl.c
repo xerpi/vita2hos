@@ -54,9 +54,9 @@ int sceCtrlPeekBufferPositive(int port, SceCtrlData *pad_data, int count)
 
 	pad_data->buttons = vita_buttons;
 	pad_data->lx = (255 * (analog_stick_l.x - JOYSTICK_MIN)) / (JOYSTICK_MAX - JOYSTICK_MIN);
-	pad_data->ly = (255 * (analog_stick_l.y - JOYSTICK_MIN)) / (JOYSTICK_MAX - JOYSTICK_MIN);
+	pad_data->ly = (255 * ((255 - analog_stick_l.y) - JOYSTICK_MIN)) / (JOYSTICK_MAX - JOYSTICK_MIN);
 	pad_data->rx = (255 * (analog_stick_r.x - JOYSTICK_MIN)) / (JOYSTICK_MAX - JOYSTICK_MIN);
-	pad_data->ry = (255 * (analog_stick_r.y - JOYSTICK_MIN)) / (JOYSTICK_MAX - JOYSTICK_MIN);
+	pad_data->ry = (255 * ((255 - analog_stick_r.y) - JOYSTICK_MIN)) / (JOYSTICK_MAX - JOYSTICK_MIN);
 
 	return 0;
 }
