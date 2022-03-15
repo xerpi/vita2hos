@@ -16,9 +16,6 @@
 #include "vita3k_shader_recompiler_iface_c.h"
 #include "uam_compiler_iface_c.h"
 
-#include "basic_vsh_dksh.h"
-#include "color_fsh_dksh.h"
-
 #define DUMP_SHADER_SPIRV	1
 #define DUMP_SHADER_GLSL	1
 #define ENABLE_SHADER_DUMP_CB	0
@@ -279,19 +276,12 @@ static bool g_gxm_initialized;
 
 /* Deko3D */
 
-#define CODEMEMSIZE	(64*1024)
-#define CMDMEMSIZE	(16*1024)
-#define DYNCMDMEMSIZE	(128*1024*1024)
-#define DATAMEMSIZE	(1*1024*1024)
-
 static DkDevice g_dk_device;
 static DkQueue g_render_queue;
 static DkMemBlock g_notification_region_memblock;
 static DisplayQueueControlBlock *g_display_queue;
 static DkMemBlock g_code_memblock;
 static uint32_t g_code_mem_offset;
-static DkShader g_vertexShader;
-static DkShader g_fragmentShader;
 
 static int SceGxmDisplayQueue_thread(SceSize args, void *argp);
 
@@ -311,17 +301,6 @@ static inline uint32_t gxm_parameter_type_size(SceGxmParameterType type)
 	default:
 		return 4;
 	}
-}
-
-static void load_shader_memory(DkMemBlock memblock, DkShader *shader, uint32_t *offset, const void *data, uint32_t size)
-{
-	DkShaderMaker shader_maker;
-
-	memcpy((char *)dkMemBlockGetCpuAddr(g_code_memblock) + *offset, data, size);
-	dkShaderMakerDefaults(&shader_maker, memblock, *offset);
-	dkShaderInitialize(shader, &shader_maker);
-
-	*offset += ALIGN(size, DK_SHADER_CODE_ALIGNMENT);
 }
 
 #if DUMP_SHADER_SPIRV
@@ -403,15 +382,13 @@ int sceGxmInitialize(const SceGxmInitializeParams *params)
 	sceKernelStartThread(g_display_queue->thid, sizeof(g_display_queue), &g_display_queue);
 
 	/* Create memory block for the shader code */
-	g_code_memblock = dk_alloc_memblock(g_dk_device, CODEMEMSIZE,
+	g_code_memblock = dk_alloc_memblock(g_dk_device, 64 * 1024,
 		DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Code);
 
-	/* Load shaders */
 	g_code_mem_offset = 0;
-	load_shader_memory(g_code_memblock, &g_vertexShader, &g_code_mem_offset, basic_vsh_dksh, basic_vsh_dksh_size);
-	load_shader_memory(g_code_memblock, &g_fragmentShader, &g_code_mem_offset, color_fsh_dksh, color_fsh_dksh_size);
 
 	g_gxm_initialized = true;
+
 	return 0;
 }
 
