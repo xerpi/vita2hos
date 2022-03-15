@@ -64,7 +64,7 @@ SceUID sceKernelAllocMemBlock(const char *name, SceKernelMemBlockType type, SceS
 	/* We also map all the allocated memory blocks to the GPU */
 	dkMemBlockMakerDefaults(&memblock_maker, g_dk_device, block->size);
 	memblock_maker.storage = block->base;
-	memblock_maker.flags = memblock_flags;
+	memblock_maker.flags = memblock_flags | DkMemBlockFlags_Image;
 	block->dk_memblock = dkMemBlockCreate(&memblock_maker);
 
 	return block->uid;
