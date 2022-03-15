@@ -56,3 +56,31 @@ err_close_file:
 
 	return -1;
 }
+
+int util_write_binary_file(const char *filename, const void *data, uint32_t size)
+{
+	FILE *fp;
+
+	fp = fopen(filename, "wb");
+	if (!fp)
+		return -1;
+
+	fwrite(data, 1, size, fp);
+	fclose(fp);
+
+	return 0;
+}
+
+int util_write_text_file(const char *filename, const char *data)
+{
+	FILE *fp;
+
+	fp = fopen(filename, "w");
+	if (!fp)
+		return -1;
+
+	fputs(data, fp);
+	fclose(fp);
+
+	return 0;
+}

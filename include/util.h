@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include "config.h"
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
@@ -34,5 +35,7 @@ static inline uint32_t next_pow2(uint32_t x)
 }
 
 int util_load_file(const char *filename, void **data, uint32_t *size);
+int util_write_binary_file(const char *filename, const void *data, uint32_t size);
+int util_write_text_file(const char *filename, const char *data);
 
 #endif

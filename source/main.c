@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <switch.h>
 #include <deko3d.h>
 #include <psp2/kernel/threadmgr.h>
@@ -16,8 +17,6 @@
 #include "module.h"
 #include "log.h"
 #include "load.h"
-
-#define VITA_EXE_PATH	"/test.elf"
 
 static void dk_debug_callback(void *userData, const char *context, DkResult result, const char *message)
 {
@@ -95,6 +94,13 @@ done:
 	return ret;
 }
 
+static void create_vita2hos_paths()
+{
+	mkdir(VITA2HOS_ROOT_PATH, 0755);
+	mkdir(VITA2HOS_DUMP_PATH, 0755);
+	mkdir(VITA2HOS_DUMP_SHADER_PATH, 0755);
+}
+
 int main(int argc, char *argv[])
 {
 	Jit jit;
@@ -108,9 +114,16 @@ int main(int argc, char *argv[])
 	LOG("vita2hos " VITA2HOS_MAJOR "." VITA2HOS_MINOR "." VITA2HOS_PATCH "-" VITA2HOS_HASH
 	    " (" __DATE__ " " __TIME__ ")");
 
+	create_vita2hos_paths();
+
 	register_modules();
 
-	ret = load_exe(&jit, VITA_EXE_PATH, &entry);
+	ret = load_exe(&jit, VITA2HOS_EXE_FILE, &entry);
+	if (ret != 0) {
+		LOG("Could not find '"VITA2HOS_EXE_FILE"'. Falling back to '/test.elf'...");
+		ret = load_exe(&jit, "/test.elf", &entry);
+	}
+
 	if (ret == 0) {
 		LOG("Launching PlayStation Vita executable!");
 
@@ -124,7 +137,7 @@ int main(int argc, char *argv[])
 		LOG("jitClose() returned: 0x%x", ret);
 	} else {
 		fatal_error("Error loading PlayStation Vita executable.",
-			    "Make sure to place it to " VITA_EXE_PATH);
+			    "Make sure to place it to '" VITA2HOS_EXE_FILE "'");
 	}
 
 	module_finish();
