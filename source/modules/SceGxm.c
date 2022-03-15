@@ -1170,6 +1170,29 @@ int sceGxmDisplayQueueFinish(void)
 
 void sceGxmSetVertexProgram(SceGxmContext *context, const SceGxmVertexProgram *vertexProgram)
 {
+	DkVtxAttribState vertex_attrib_state[SCE_GXM_MAX_VERTEX_ATTRIBUTES];
+	DkVtxBufferState vertex_buffer_state[SCE_GXM_MAX_VERTEX_STREAMS];
+	const SceGxmVertexAttribute *attributes = vertexProgram->attributes;
+	const SceGxmVertexStream *streams = vertexProgram->streams;
+
+	for (uint32_t i = 0; i < vertexProgram->attributeCount; i++) {
+		vertex_attrib_state[i].bufferId = attributes[i].streamIndex;
+		vertex_attrib_state[i].isFixed = 0;
+		vertex_attrib_state[i].offset = attributes[i].offset;
+		vertex_attrib_state[i].size = gxm_to_dk_vtx_attrib_size(attributes[i].format,
+								        attributes[i].componentCount);
+		vertex_attrib_state[i].type = gxm_to_dk_vtx_attrib_type(attributes[i].format);
+		vertex_attrib_state[i].isBgra = 0;
+	}
+
+	for (uint32_t i = 0; i < vertexProgram->streamCount; i++) {
+		vertex_buffer_state[i].stride = streams[i].stride;
+		vertex_buffer_state[i].divisor = 0;
+	}
+
+	dkCmdBufBindVtxAttribState(context->cmdbuf, vertex_attrib_state, vertexProgram->attributeCount);
+	dkCmdBufBindVtxBufferState(context->cmdbuf, vertex_buffer_state, vertexProgram->streamCount);
+
 	context->vertex_program = vertexProgram;
 }
 
@@ -1177,8 +1200,6 @@ void sceGxmSetFragmentProgram(SceGxmContext *context, const SceGxmFragmentProgra
 {
 	DkColorWriteState color_write_state;
 	uint32_t mask;
-
-	context->fragment_program = fragmentProgram;
 
 	mask = DkColorMask_R * !!(fragmentProgram->blendInfo.colorMask & SCE_GXM_COLOR_MASK_R) |
 	       DkColorMask_G * !!(fragmentProgram->blendInfo.colorMask & SCE_GXM_COLOR_MASK_G) |
@@ -1188,17 +1209,14 @@ void sceGxmSetFragmentProgram(SceGxmContext *context, const SceGxmFragmentProgra
 	dkColorWriteStateDefaults(&color_write_state);
 	dkColorWriteStateSetMask(&color_write_state, 0, mask);
 	dkCmdBufBindColorWriteState(context->cmdbuf, &color_write_state);
+
+	context->fragment_program = fragmentProgram;
 }
 
 int sceGxmSetVertexStream(SceGxmContext *context, unsigned int streamIndex, const void *streamData)
 {
-	DkVtxAttribState vertex_attrib_state[SCE_GXM_MAX_VERTEX_ATTRIBUTES];
-	DkVtxBufferState vertex_buffer_state;
 	VitaMemBlockInfo *stream_block;
 	uint32_t stream_offset;
-	SceGxmVertexAttribute *attributes = context->vertex_program->attributes;
-	uint32_t attribute_count = context->vertex_program->attributeCount;
-	SceGxmVertexStream *streams = context->vertex_program->streams;
 
 	stream_block = SceSysmem_get_vita_memblock_info_for_addr(streamData);
 	if (!stream_block)
@@ -1208,23 +1226,6 @@ int sceGxmSetVertexStream(SceGxmContext *context, unsigned int streamIndex, cons
 	dkCmdBufBindVtxBuffer(context->cmdbuf, streamIndex,
 			      dkMemBlockGetGpuAddr(stream_block->dk_memblock) + stream_offset,
 			      stream_block->size - stream_offset);
-
-	memset(vertex_attrib_state, 0, attribute_count * sizeof(DkVtxAttribState));
-	for (uint32_t i = 0; i < attribute_count; i++) {
-		vertex_attrib_state[i].bufferId = streamIndex;
-		vertex_attrib_state[i].isFixed = 0;
-		vertex_attrib_state[i].offset = attributes[i].offset;
-		vertex_attrib_state[i].size = gxm_to_dk_vtx_attrib_size(attributes[i].format,
-								        attributes[i].componentCount);
-		vertex_attrib_state[i].type = gxm_to_dk_vtx_attrib_type(attributes[i].format);
-		vertex_attrib_state[i].isBgra = 0;
-	}
-
-	vertex_buffer_state.stride = streams[streamIndex].stride;
-	vertex_buffer_state.divisor = 0;
-
-	dkCmdBufBindVtxAttribState(context->cmdbuf, vertex_attrib_state, attribute_count);
-	dkCmdBufBindVtxBufferState(context->cmdbuf, &vertex_buffer_state, 1);
 
 	return 0;
 }
