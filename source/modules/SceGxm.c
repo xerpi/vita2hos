@@ -30,6 +30,7 @@ typedef struct SceGxmContext {
 	SceGxmContextParams params;
 	DkMemBlock cmdbuf_memblock;
 	DkCmdBuf cmdbuf;
+	/* State */
 	struct {
 		DkMemBlock memblock;
 		uint32_t head;
@@ -44,9 +45,13 @@ typedef struct SceGxmContext {
 	} fragment_ringbuf;
 	const SceGxmVertexProgram *vertex_program;
 	const SceGxmFragmentProgram *fragment_program;
+	bool in_scene;
+	DkDepthStencilState depth_stencil_state;
 	struct {
-		bool valid;
-	} scene;
+		uint8_t ref;
+		uint8_t compare_mask;
+		uint8_t write_mask;
+	} front_stencil_state, back_stencil_state;
 } SceGxmContext;
 static_assert(sizeof(SceGxmContext) <= SCE_GXM_MINIMUM_CONTEXT_HOST_MEM_SIZE, "Oversized SceGxmContext");
 
@@ -262,11 +267,6 @@ static bool g_gxm_initialized;
 
 /* Deko3D */
 
-typedef struct {
-	float position[3];
-	float color[3];
-} Vertex;
-
 #define CODEMEMSIZE	(64*1024)
 #define CMDMEMSIZE	(16*1024)
 #define DYNCMDMEMSIZE	(128*1024*1024)
@@ -473,6 +473,30 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 	ctx->fragment_ringbuf.head = 0;
 	ctx->fragment_ringbuf.tail = 0;
 	ctx->fragment_ringbuf.size = params->fragmentRingBufferMemSize;
+
+	/* Init default state */
+	ctx->depth_stencil_state.depthTestEnable = true;
+	ctx->depth_stencil_state.depthWriteEnable = true;
+	ctx->depth_stencil_state.stencilTestEnable = false;
+	ctx->depth_stencil_state.depthCompareOp = DkCompareOp_Lequal;
+
+	ctx->depth_stencil_state.stencilFrontFailOp = DkStencilOp_Keep;
+	ctx->depth_stencil_state.stencilFrontPassOp = DkStencilOp_Keep;
+	ctx->depth_stencil_state.stencilFrontDepthFailOp = DkStencilOp_Keep;
+	ctx->depth_stencil_state.stencilFrontCompareOp = DkCompareOp_Always;
+
+	ctx->depth_stencil_state.stencilBackFailOp = DkStencilOp_Keep;
+	ctx->depth_stencil_state.stencilBackPassOp = DkStencilOp_Keep;
+	ctx->depth_stencil_state.stencilBackDepthFailOp = DkStencilOp_Keep;
+	ctx->depth_stencil_state.stencilBackCompareOp = DkCompareOp_Always;
+
+	ctx->front_stencil_state.ref = 0;
+	ctx->front_stencil_state.compare_mask = 0;
+	ctx->front_stencil_state.write_mask = 0;
+
+	ctx->back_stencil_state.ref = 0;
+	ctx->back_stencil_state.compare_mask = 0;
+	ctx->back_stencil_state.write_mask = 0;
 
 	*context = ctx;
 
@@ -699,8 +723,19 @@ int sceGxmShaderPatcherCreateFragmentProgram(SceGxmShaderPatcher *shaderPatcher,
 	fragment_program->programId = programId;
 	fragment_program->outputFormat = outputFormat;
 	fragment_program->multisampleMode = multisampleMode;
-	if (blendInfo)
+	if (blendInfo) {
 		fragment_program->blendInfo = *blendInfo;
+	} else {
+		fragment_program->blendInfo = (SceGxmBlendInfo){
+			SCE_GXM_COLOR_MASK_ALL,
+			SCE_GXM_BLEND_FUNC_NONE,
+			SCE_GXM_BLEND_FUNC_NONE,
+			SCE_GXM_BLEND_FACTOR_ONE,
+			SCE_GXM_BLEND_FACTOR_ZERO,
+			SCE_GXM_BLEND_FACTOR_ONE,
+			SCE_GXM_BLEND_FACTOR_ZERO
+		};
+	}
 
 	ret = translate_shader(&fragment_program->dk_shader, programId->programHeader,
 			       pipeline_stage_fragment, "frag",
@@ -780,6 +815,94 @@ int sceGxmColorSurfaceInit(SceGxmColorSurface *surface, SceGxmColorFormat colorF
 	return 0;
 }
 
+int sceGxmDepthStencilSurfaceInit(SceGxmDepthStencilSurface *surface,
+				  SceGxmDepthStencilFormat depthStencilFormat,
+				  SceGxmDepthStencilSurfaceType surfaceType,
+				  unsigned int strideInSamples,
+				  void *depthData,
+				  void *stencilData)
+
+{
+	if (!surface)
+		return SCE_GXM_ERROR_INVALID_POINTER;
+	else if ((strideInSamples == 0) || ((strideInSamples % SCE_GXM_TILE_SIZEX) != 0))
+		return SCE_GXM_ERROR_INVALID_VALUE;
+
+	surface->zlsControl = 0;
+	surface->depthData = depthData;
+	surface->stencilData = stencilData;
+	surface->backgroundDepth = 0.0f;
+	surface->backgroundControl = 0;
+
+	return 0;
+}
+
+void sceGxmSetFrontDepthFunc(SceGxmContext *context, SceGxmDepthFunc depthFunc)
+{
+	context->depth_stencil_state.depthCompareOp = gxm_depth_func_to_dk_compare_op(depthFunc);
+	dkCmdBufBindDepthStencilState(context->cmdbuf, &context->depth_stencil_state);
+}
+
+void sceGxmSetFrontDepthWriteEnable(SceGxmContext *context, SceGxmDepthWriteMode enable)
+{
+	context->depth_stencil_state.depthWriteEnable =
+		(enable == SCE_GXM_DEPTH_WRITE_ENABLED) ? 1 : 0;
+	dkCmdBufBindDepthStencilState(context->cmdbuf, &context->depth_stencil_state);
+}
+
+void sceGxmSetFrontStencilRef(SceGxmContext *context, unsigned int sref)
+{
+	context->front_stencil_state.ref = sref;
+	dkCmdBufSetStencil(context->cmdbuf, DkFace_Front,
+			   context->front_stencil_state.write_mask,
+			   context->front_stencil_state.ref,
+			   context->front_stencil_state.compare_mask);
+}
+
+void sceGxmSetBackStencilRef(SceGxmContext *context, unsigned int sref)
+{
+	context->back_stencil_state.ref = sref;
+	dkCmdBufSetStencil(context->cmdbuf, DkFace_Back,
+			   context->back_stencil_state.write_mask,
+			   context->back_stencil_state.ref,
+			   context->back_stencil_state.compare_mask);
+}
+
+void sceGxmSetFrontStencilFunc(SceGxmContext *context, SceGxmStencilFunc func,
+			       SceGxmStencilOp stencilFail, SceGxmStencilOp depthFail,
+			       SceGxmStencilOp depthPass, unsigned char compareMask,
+			       unsigned char writeMask)
+{
+
+	context->depth_stencil_state.stencilFrontFailOp = gxm_stencil_op_to_dk_stencil_op(stencilFail);
+	context->depth_stencil_state.stencilFrontDepthFailOp = gxm_stencil_op_to_dk_stencil_op(depthFail);
+	context->depth_stencil_state.stencilFrontCompareOp = gxm_stencil_func_to_dk_compare_op(func);
+	context->front_stencil_state.compare_mask = compareMask;
+	context->front_stencil_state.write_mask = writeMask;
+	dkCmdBufBindDepthStencilState(context->cmdbuf, &context->depth_stencil_state);
+	dkCmdBufSetStencil(context->cmdbuf, DkFace_Front,
+			   context->front_stencil_state.write_mask,
+			   context->front_stencil_state.ref,
+			   context->front_stencil_state.compare_mask);
+}
+
+void sceGxmSetBackStencilFunc(SceGxmContext *context, SceGxmStencilFunc func,
+			      SceGxmStencilOp stencilFail, SceGxmStencilOp depthFail,
+			      SceGxmStencilOp depthPass, unsigned char compareMask,
+			      unsigned char writeMask)
+{
+	context->depth_stencil_state.stencilBackFailOp = gxm_stencil_op_to_dk_stencil_op(stencilFail);
+	context->depth_stencil_state.stencilBackDepthFailOp = gxm_stencil_op_to_dk_stencil_op(depthFail);
+	context->depth_stencil_state.stencilBackCompareOp = gxm_stencil_func_to_dk_compare_op(func);
+	context->back_stencil_state.compare_mask = compareMask;
+	context->back_stencil_state.write_mask = writeMask;
+	dkCmdBufBindDepthStencilState(context->cmdbuf, &context->depth_stencil_state);
+	dkCmdBufSetStencil(context->cmdbuf, DkFace_Back,
+			   context->back_stencil_state.write_mask,
+			   context->back_stencil_state.ref,
+			   context->back_stencil_state.compare_mask);
+}
+
 static inline void dk_image_view_for_gxm_color_surface(DkImage *image, DkImageView *view, DkMemBlock block,
 						       const SceGxmColorSurfaceInner *surface)
 {
@@ -801,6 +924,27 @@ static inline void dk_image_view_for_gxm_color_surface(DkImage *image, DkImageVi
 	dkImageViewDefaults(view, image);
 }
 
+static inline void dk_image_view_for_gxm_depth_stencil_surface(DkImage *image, DkImageView *view,
+							       DkMemBlock block,
+							       uint32_t width, uint32_t height,
+							       const SceGxmDepthStencilSurface *surface)
+{
+	DkImageLayoutMaker maker;
+	DkImageLayout layout;
+	uint32_t offset;
+
+	dkImageLayoutMakerDefaults(&maker, g_dk_device);
+	maker.flags = DkImageFlags_UsageRender;
+	maker.format = DkImageFormat_Z24S8;
+	maker.dimensions[0] = width;
+	maker.dimensions[1] = height;
+	dkImageLayoutInitialize(&layout, &maker);
+
+	offset = (uintptr_t)surface->depthData - (uintptr_t)dkMemBlockGetCpuAddr(block);
+	dkImageInitialize(image, &layout, block, offset);
+	dkImageViewDefaults(view, image);
+}
+
 int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 		     const SceGxmRenderTarget *renderTarget, const SceGxmValidRegion *validRegion,
 		     SceGxmSyncObject *vertexSyncObject, SceGxmSyncObject *fragmentSyncObject,
@@ -810,6 +954,9 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 	DkMemBlock color_surface_block;
 	DkImage color_surface_image;
 	DkImageView color_surface_view;
+	DkMemBlock depth_stencil_surface_block;
+	DkImage depth_stencil_surface_image;
+	DkImageView depth_stencil_surface_view;
 	DkRasterizerState rasterizer_state;
 	DkColorState color_state;
 	DkColorWriteState color_write_state;
@@ -817,12 +964,25 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 	DkScissor scissor = { 0, 0, renderTarget->params.width, renderTarget->params.height };
 	SceGxmColorSurfaceInner *color_surface_inner = (SceGxmColorSurfaceInner *)colorSurface;
 
-	if (context->scene.valid)
+	if (context->in_scene)
 		return SCE_GXM_ERROR_WITHIN_SCENE;
 
 	color_surface_block = SceSysmem_get_dk_memblock_for_addr(color_surface_inner->data);
 	if (!color_surface_block)
 		return SCE_GXM_ERROR_INVALID_VALUE;
+
+	if (depthStencil) {
+		depth_stencil_surface_block = SceSysmem_get_dk_memblock_for_addr(depthStencil->depthData);
+		if (!depth_stencil_surface_block)
+			return SCE_GXM_ERROR_INVALID_VALUE;
+
+		dk_image_view_for_gxm_depth_stencil_surface(&depth_stencil_surface_image,
+							    &depth_stencil_surface_view,
+							    depth_stencil_surface_block,
+							    renderTarget->params.width,
+							    renderTarget->params.height,
+							    depthStencil);
+	}
 
 	LOG("sceGxmBeginScene to renderTarget %p, fragmentSyncObject: %p, w: %" PRId32 ", h: %" PRId32 ", stride: %" PRId32 ", CPU addr: %p",
 		renderTarget, fragmentSyncObject, color_surface_inner->width, color_surface_inner->height,
@@ -833,12 +993,14 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 					    color_surface_block, color_surface_inner);
 
 	dkRasterizerStateDefaults(&rasterizer_state);
+	rasterizer_state.cullMode = DkFace_None;
 	dkColorStateDefaults(&color_state);
 	dkColorWriteStateDefaults(&color_write_state);
 
 	dkCmdBufClear(context->cmdbuf);
 
-	dkCmdBufBindRenderTarget(context->cmdbuf, &color_surface_view, NULL);
+	dkCmdBufBindRenderTarget(context->cmdbuf, &color_surface_view,
+				 depthStencil ? &depth_stencil_surface_view : NULL);
 
 	dkCmdBufSetViewports(context->cmdbuf, 0, &viewport, 1);
 	dkCmdBufSetScissors(context->cmdbuf, 0, &scissor, 1);
@@ -851,7 +1013,9 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 
 	context->vertex_ringbuf.head = 0;
 	context->fragment_ringbuf.head = 0;
-	context->scene.valid = true;
+	context->in_scene = true;
+
+	dkCmdBufClearDepthStencil(context->cmdbuf, true, 1.0f, 0xFF, 0);
 
 	/* GXMRenderVertUniformBlock */
 	DkBufExtents buf_extents;
@@ -896,7 +1060,7 @@ int sceGxmEndScene(SceGxmContext *context, const SceGxmNotification *vertexNotif
 
 	LOG("sceGxmEndScene");
 
-	if (!context->scene.valid)
+	if (!context->in_scene)
 		return SCE_GXM_ERROR_NOT_WITHIN_SCENE;
 
 	if (vertexNotification) {
@@ -922,7 +1086,7 @@ int sceGxmEndScene(SceGxmContext *context, const SceGxmNotification *vertexNotif
 	cmd_list = dkCmdBufFinishList(context->cmdbuf);
 	dkQueueSubmitCommands(g_render_queue, cmd_list);
 
-	context->scene.valid = false;
+	context->in_scene = false;
 
 	return 0;
 }
@@ -1009,7 +1173,19 @@ void sceGxmSetVertexProgram(SceGxmContext *context, const SceGxmVertexProgram *v
 
 void sceGxmSetFragmentProgram(SceGxmContext *context, const SceGxmFragmentProgram *fragmentProgram)
 {
+	DkColorWriteState color_write_state;
+	uint32_t mask;
+
 	context->fragment_program = fragmentProgram;
+
+	mask = DkColorMask_R * !!(fragmentProgram->blendInfo.colorMask & SCE_GXM_COLOR_MASK_R) |
+	       DkColorMask_G * !!(fragmentProgram->blendInfo.colorMask & SCE_GXM_COLOR_MASK_G) |
+	       DkColorMask_B * !!(fragmentProgram->blendInfo.colorMask & SCE_GXM_COLOR_MASK_B) |
+	       DkColorMask_A * !!(fragmentProgram->blendInfo.colorMask & SCE_GXM_COLOR_MASK_A);
+
+	dkColorWriteStateDefaults(&color_write_state);
+	dkColorWriteStateSetMask(&color_write_state, 0, mask);
+	dkCmdBufBindColorWriteState(context->cmdbuf, &color_write_state);
 }
 
 int sceGxmSetVertexStream(SceGxmContext *context, unsigned int streamIndex, const void *streamData)
@@ -1057,7 +1233,7 @@ int sceGxmReserveVertexDefaultUniformBuffer(SceGxmContext *context, void **unifo
 	uint32_t default_uniform_buffer_count;
 	const SceGxmProgram *program;
 
-	if (!context->scene.valid)
+	if (!context->in_scene)
 		return SCE_GXM_ERROR_NOT_WITHIN_SCENE;
 	else if (!context->vertex_program)
 		return SCE_GXM_ERROR_NULL_PROGRAM;
@@ -1087,7 +1263,7 @@ int sceGxmReserveFragmentDefaultUniformBuffer(SceGxmContext *context, void **uni
 	uint32_t default_uniform_buffer_count;
 	const SceGxmProgram *program;
 
-	if (!context->scene.valid)
+	if (!context->in_scene)
 		return SCE_GXM_ERROR_NOT_WITHIN_SCENE;
 	else if (!context->fragment_program)
 		return SCE_GXM_ERROR_NULL_PROGRAM;
@@ -1237,6 +1413,13 @@ void SceGxm_register(void)
 		{0x207AF96B, sceGxmCreateRenderTarget},
 		{0x0B94C50A, sceGxmDestroyRenderTarget},
 		{0xED0F6E25, sceGxmColorSurfaceInit},
+		{0xCA9D41D1, sceGxmDepthStencilSurfaceInit},
+		{0x14BD831F, sceGxmSetFrontDepthFunc},
+		{0xF32CBF34, sceGxmSetFrontDepthWriteEnable},
+		{0x8FA6FE44, sceGxmSetFrontStencilRef},
+		{0x866A0517, sceGxmSetBackStencilRef},
+		{0xB8645A9A, sceGxmSetFrontStencilFunc},
+		{0x1A68C8D2, sceGxmSetBackStencilFunc},
 		{0x8734FF4E, sceGxmBeginScene},
 		{0xFE300E2F, sceGxmEndScene},
 		{0xEC5C26B5, sceGxmDisplayQueueAddEntry},
