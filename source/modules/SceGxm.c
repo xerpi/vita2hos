@@ -30,28 +30,28 @@ typedef struct SceGxmContext {
 	SceGxmContextParams params;
 	DkMemBlock cmdbuf_memblock;
 	DkCmdBuf cmdbuf;
+	DkMemBlock vertex_rb_memblock;
+	DkMemBlock fragment_rb_memblock;
 	/* State */
 	struct {
-		DkMemBlock memblock;
-		uint32_t head;
-		uint32_t tail;
-		uint32_t size;
-	} vertex_ringbuf;
-	struct {
-		DkMemBlock memblock;
-		uint32_t head;
-		uint32_t tail;
-		uint32_t size;
-	} fragment_ringbuf;
-	const SceGxmVertexProgram *vertex_program;
-	const SceGxmFragmentProgram *fragment_program;
-	bool in_scene;
-	DkDepthStencilState depth_stencil_state;
-	struct {
-		uint8_t ref;
-		uint8_t compare_mask;
-		uint8_t write_mask;
-	} front_stencil_state, back_stencil_state;
+		struct {
+			uint32_t head;
+			uint32_t tail;
+			uint32_t size;
+		} vertex_rb, fragment_rb;
+		const SceGxmVertexProgram *vertex_program;
+		const SceGxmFragmentProgram *fragment_program;
+		bool in_scene;
+		DkRasterizerState rasterizer_state;
+		DkColorState color_state;
+		DkColorWriteState color_write_state;
+		DkDepthStencilState depth_stencil_state;
+		struct {
+			uint8_t ref;
+			uint8_t compare_mask;
+			uint8_t write_mask;
+		} front_stencil_state, back_stencil_state;
+	};
 } SceGxmContext;
 static_assert(sizeof(SceGxmContext) <= SCE_GXM_MINIMUM_CONTEXT_HOST_MEM_SIZE, "Oversized SceGxmContext");
 
@@ -459,22 +459,29 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 	dkCmdBufAddMemory(ctx->cmdbuf, ctx->cmdbuf_memblock, 0, ctx->params.vdmRingBufferMemSize);
 
 	/* Get the passed vertex ringbuffer for vertex default uniform buffer reservations */
-	ctx->vertex_ringbuf.memblock = SceSysmem_get_dk_memblock_for_addr(params->vertexRingBufferMem);
-	assert(ctx->vertex_ringbuf.memblock);
-	assert(params->vertexRingBufferMem == dkMemBlockGetCpuAddr(ctx->vertex_ringbuf.memblock));
-	ctx->vertex_ringbuf.head = 0;
-	ctx->vertex_ringbuf.tail = 0;
-	ctx->vertex_ringbuf.size = params->vertexRingBufferMemSize;
+	ctx->vertex_rb_memblock = SceSysmem_get_dk_memblock_for_addr(params->vertexRingBufferMem);
+	assert(ctx->vertex_rb_memblock);
+	assert(params->vertexRingBufferMem == dkMemBlockGetCpuAddr(ctx->vertex_rb_memblock));
 
 	/* Get the passed fragment ringbuffer for fragment default uniform buffer reservations */
-	ctx->fragment_ringbuf.memblock = SceSysmem_get_dk_memblock_for_addr(params->fragmentRingBufferMem);
-	assert(ctx->fragment_ringbuf.memblock);
-	assert(params->fragmentRingBufferMem == dkMemBlockGetCpuAddr(ctx->fragment_ringbuf.memblock));
-	ctx->fragment_ringbuf.head = 0;
-	ctx->fragment_ringbuf.tail = 0;
-	ctx->fragment_ringbuf.size = params->fragmentRingBufferMemSize;
+	ctx->fragment_rb_memblock = SceSysmem_get_dk_memblock_for_addr(params->fragmentRingBufferMem);
+	assert(ctx->fragment_rb_memblock);
+	assert(params->fragmentRingBufferMem == dkMemBlockGetCpuAddr(ctx->fragment_rb_memblock));
 
 	/* Init default state */
+	ctx->vertex_rb.head = 0;
+	ctx->vertex_rb.tail = 0;
+	ctx->vertex_rb.size = params->vertexRingBufferMemSize;
+	ctx->fragment_rb.head = 0;
+	ctx->fragment_rb.tail = 0;
+	ctx->fragment_rb.size = params->fragmentRingBufferMemSize;
+
+	dkRasterizerStateDefaults(&ctx->rasterizer_state);
+	ctx->rasterizer_state.cullMode = DkFace_None;
+
+	dkColorStateDefaults(&ctx->color_state);
+	dkColorWriteStateDefaults(&ctx->color_write_state);
+
 	ctx->depth_stencil_state.depthTestEnable = true;
 	ctx->depth_stencil_state.depthWriteEnable = true;
 	ctx->depth_stencil_state.stencilTestEnable = false;
@@ -945,6 +952,42 @@ static inline void dk_image_view_for_gxm_depth_stencil_surface(DkImage *image, D
 	dkImageViewDefaults(view, image);
 }
 
+static void set_gxm_uniform_blocks(SceGxmContext *context, const DkViewport *viewport)
+{
+	struct GXMRenderVertUniformBlock vert_unif;
+	struct GXMRenderFragUniformBlock frag_unif;
+	uint32_t uniform_size;
+
+	vert_unif = (struct GXMRenderVertUniformBlock){
+		.viewport_flip = {1.0f, 1.0f, 1.0f, 1.0f},
+		.viewport_flag = (0) ? 0.0f : 1.0f,
+		.screen_width = viewport->width,
+		.screen_height = viewport->height
+	};
+
+	frag_unif = (struct GXMRenderFragUniformBlock){
+		.back_disabled = 0.0f,
+		.front_disabled = 0.0f,
+		.writing_mask = 1.0f
+	};
+
+	memcpy(dkMemBlockGetCpuAddr(context->vertex_rb_memblock) + context->vertex_rb.head,
+				    &vert_unif, sizeof(vert_unif));
+	uniform_size = ALIGN(sizeof(vert_unif), DK_UNIFORM_BUF_ALIGNMENT);
+	dkCmdBufBindUniformBuffer(context->cmdbuf, DkStage_Vertex, 2 /* hardcoded */,
+				  dkMemBlockGetGpuAddr(context->vertex_rb_memblock) + context->vertex_rb.head,
+				  uniform_size);
+	context->vertex_rb.head += uniform_size;
+
+	memcpy(dkMemBlockGetCpuAddr(context->fragment_rb_memblock) + context->fragment_rb.head,
+				    &frag_unif, sizeof(frag_unif));
+	uniform_size = ALIGN(sizeof(frag_unif), DK_UNIFORM_BUF_ALIGNMENT);
+	dkCmdBufBindUniformBuffer(context->cmdbuf, DkStage_Fragment, 3 /* hardcoded */,
+				  dkMemBlockGetGpuAddr(context->fragment_rb_memblock) + context->fragment_rb.head,
+				  uniform_size);
+	context->fragment_rb.head += uniform_size;
+}
+
 int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 		     const SceGxmRenderTarget *renderTarget, const SceGxmValidRegion *validRegion,
 		     SceGxmSyncObject *vertexSyncObject, SceGxmSyncObject *fragmentSyncObject,
@@ -957,9 +1000,6 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 	DkMemBlock depth_stencil_surface_block;
 	DkImage depth_stencil_surface_image;
 	DkImageView depth_stencil_surface_view;
-	DkRasterizerState rasterizer_state;
-	DkColorState color_state;
-	DkColorWriteState color_write_state;
 	DkViewport viewport = { 0.0f, 0.0f, (float)renderTarget->params.width, (float)renderTarget->params.height, 0.0f, 1.0f };
 	DkScissor scissor = { 0, 0, renderTarget->params.width, renderTarget->params.height };
 	SceGxmColorSurfaceInner *color_surface_inner = (SceGxmColorSurfaceInner *)colorSurface;
@@ -984,18 +1024,15 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 							    depthStencil);
 	}
 
-	LOG("sceGxmBeginScene to renderTarget %p, fragmentSyncObject: %p, w: %" PRId32 ", h: %" PRId32 ", stride: %" PRId32 ", CPU addr: %p",
-		renderTarget, fragmentSyncObject, color_surface_inner->width, color_surface_inner->height,
+	LOG("sceGxmBeginScene to renderTarget %p, fragmentSyncObject: %p, "
+	    "w: %" PRId32 ", h: %" PRId32 ", stride: %" PRId32 ", CPU addr: %p",
+		renderTarget, fragmentSyncObject,
+		color_surface_inner->width, color_surface_inner->height,
 		color_surface_inner->strideInPixels,
 		dkMemBlockGetCpuAddr(color_surface_block));
 
 	dk_image_view_for_gxm_color_surface(&color_surface_image, &color_surface_view,
 					    color_surface_block, color_surface_inner);
-
-	dkRasterizerStateDefaults(&rasterizer_state);
-	rasterizer_state.cullMode = DkFace_None;
-	dkColorStateDefaults(&color_state);
-	dkColorWriteStateDefaults(&color_write_state);
 
 	dkCmdBufClear(context->cmdbuf);
 
@@ -1004,49 +1041,21 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 
 	dkCmdBufSetViewports(context->cmdbuf, 0, &viewport, 1);
 	dkCmdBufSetScissors(context->cmdbuf, 0, &scissor, 1);
-	dkCmdBufBindRasterizerState(context->cmdbuf, &rasterizer_state);
-	dkCmdBufBindColorState(context->cmdbuf, &color_state);
-	dkCmdBufBindColorWriteState(context->cmdbuf, &color_write_state);
+	dkCmdBufBindRasterizerState(context->cmdbuf, &context->rasterizer_state);
+	dkCmdBufBindColorState(context->cmdbuf, &context->color_state);
+	dkCmdBufBindColorWriteState(context->cmdbuf, &context->color_write_state);
 
 	if (fragmentSyncObject)
 		dkCmdBufWaitFence(context->cmdbuf, &fragmentSyncObject->fence);
 
-	context->vertex_ringbuf.head = 0;
-	context->fragment_ringbuf.head = 0;
-	context->in_scene = true;
+	context->vertex_rb.head = 0;
+	context->fragment_rb.head = 0;
+
+	set_gxm_uniform_blocks(context, &viewport);
 
 	dkCmdBufClearDepthStencil(context->cmdbuf, true, 1.0f, 0xFF, 0);
 
-	/* GXMRenderVertUniformBlock */
-	DkBufExtents buf_extents;
-	uint32_t uniform_buf_size;
-	struct GXMRenderVertUniformBlock v_unif = {
-		.viewport_flip = {1.0f, 1.0f, 1.0f, 1.0f},
-		.viewport_flag = (0) ? 0.0f : 1.0f,
-		.screen_width = 960.0f,
-		.screen_height = 544.0f
-	};
-	uniform_buf_size = ALIGN(sizeof(struct GXMRenderVertUniformBlock), DK_UNIFORM_BUF_ALIGNMENT);
-	buf_extents.addr = dkMemBlockGetGpuAddr(context->vertex_ringbuf.memblock) + context->vertex_ringbuf.head;
-	buf_extents.size = uniform_buf_size;
-	void *unif_data = dkMemBlockGetCpuAddr(context->vertex_ringbuf.memblock) + context->vertex_ringbuf.head;
-	memcpy(unif_data, &v_unif, sizeof(v_unif));
-	dkCmdBufBindUniformBuffers(context->cmdbuf, DkStage_Vertex, 2 /* hardcoded */, &buf_extents, 1);
-	context->vertex_ringbuf.head += uniform_buf_size;
-
-	/* GXMRenderFragUniformBlock */
-	struct GXMRenderFragUniformBlock f_unif = {
-		.back_disabled = 0.0f,
-		.front_disabled = 0.0f,
-		.writing_mask = 1.0f
-	};
-	uniform_buf_size = ALIGN(sizeof(struct GXMRenderFragUniformBlock), DK_UNIFORM_BUF_ALIGNMENT);
-	buf_extents.addr = dkMemBlockGetGpuAddr(context->fragment_ringbuf.memblock) + context->fragment_ringbuf.head;
-	buf_extents.size = uniform_buf_size;
-	unif_data = dkMemBlockGetCpuAddr(context->fragment_ringbuf.memblock) + context->fragment_ringbuf.head;
-	memcpy(unif_data, &f_unif, sizeof(f_unif));
-	dkCmdBufBindUniformBuffers(context->cmdbuf, DkStage_Fragment, 3 /* hardcoded */, &buf_extents, 1);
-	context->fragment_ringbuf.head += uniform_buf_size;
+	context->in_scene = true;
 
 	return 0;
 }
@@ -1246,13 +1255,13 @@ int sceGxmReserveVertexDefaultUniformBuffer(SceGxmContext *context, void **unifo
 		return 0;
 	}
 
-	buf_extents.addr = dkMemBlockGetGpuAddr(context->vertex_ringbuf.memblock) + context->vertex_ringbuf.head;
+	buf_extents.addr = dkMemBlockGetGpuAddr(context->vertex_rb_memblock) + context->vertex_rb.head;
 	buf_extents.size = default_uniform_buffer_count * sizeof(float);
 
 	dkCmdBufBindStorageBuffers(context->cmdbuf, DkStage_Vertex, 0, &buf_extents, 1);
 
-	*uniformBuffer = dkMemBlockGetCpuAddr(context->vertex_ringbuf.memblock) + context->vertex_ringbuf.head;
-	context->vertex_ringbuf.head += buf_extents.size;
+	*uniformBuffer = dkMemBlockGetCpuAddr(context->vertex_rb_memblock) + context->vertex_rb.head;
+	context->vertex_rb.head += buf_extents.size;
 
 	return 0;
 }
@@ -1276,13 +1285,13 @@ int sceGxmReserveFragmentDefaultUniformBuffer(SceGxmContext *context, void **uni
 		return 0;
 	}
 
-	buf_extents.addr = dkMemBlockGetGpuAddr(context->fragment_ringbuf.memblock) + context->fragment_ringbuf.head;
+	buf_extents.addr = dkMemBlockGetGpuAddr(context->fragment_rb_memblock) + context->fragment_rb.head;
 	buf_extents.size = default_uniform_buffer_count * sizeof(float);
 
 	dkCmdBufBindStorageBuffers(context->cmdbuf, DkStage_Fragment, 1, &buf_extents, 1);
 
-	*uniformBuffer = dkMemBlockGetCpuAddr(context->fragment_ringbuf.memblock) + context->fragment_ringbuf.head;
-	context->fragment_ringbuf.head += buf_extents.size;
+	*uniformBuffer = dkMemBlockGetCpuAddr(context->fragment_rb_memblock) + context->fragment_rb.head;
+	context->fragment_rb.head += buf_extents.size;
 
 	return 0;
 }
