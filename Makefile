@@ -39,7 +39,7 @@ include $(DEVKITPRO)/libnx32/switch32_rules
 #---------------------------------------------------------------------------------
 
 VITA2HOS_MAJOR	:= 0
-VITA2HOS_MINOR	:= 1
+VITA2HOS_MINOR	:= 2
 VITA2HOS_PATCH	:= 0
 VITA2HOS_HASH	:= "$(shell git describe --dirty --always --exclude '*')"
 
