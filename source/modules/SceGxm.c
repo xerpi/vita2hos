@@ -16,8 +16,8 @@
 #include "vita3k_shader_recompiler_iface_c.h"
 #include "uam_compiler_iface_c.h"
 
-#define DUMP_SHADER_SPIRV	1
-#define DUMP_SHADER_GLSL	1
+#define DUMP_SHADER_SPIRV	0
+#define DUMP_SHADER_GLSL	0
 #define ENABLE_SHADER_DUMP_CB	0
 
 #define SCE_GXM_NOTIFICATION_COUNT	512
