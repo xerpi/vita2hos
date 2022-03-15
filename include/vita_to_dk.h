@@ -200,6 +200,76 @@ static inline DkIdxFormat gxm_to_dk_idx_format(SceGxmIndexFormat format)
 	}
 }
 
+static inline DkCompareOp gxm_depth_func_to_dk_compare_op(SceGxmDepthFunc func)
+{
+	switch (func) {
+	case SCE_GXM_DEPTH_FUNC_NEVER:
+		return DkCompareOp_Never;
+	case SCE_GXM_DEPTH_FUNC_LESS:
+		return DkCompareOp_Less;
+	case SCE_GXM_DEPTH_FUNC_EQUAL:
+		return DkCompareOp_Equal;
+	case SCE_GXM_DEPTH_FUNC_LESS_EQUAL:
+		return DkCompareOp_Lequal;
+	case SCE_GXM_DEPTH_FUNC_GREATER:
+		return DkCompareOp_Greater;
+	case SCE_GXM_DEPTH_FUNC_NOT_EQUAL:
+		return DkCompareOp_NotEqual;
+	case SCE_GXM_DEPTH_FUNC_GREATER_EQUAL:
+		return DkCompareOp_Gequal;
+	case SCE_GXM_DEPTH_FUNC_ALWAYS:
+		return DkCompareOp_Always;
+	default:
+		assert(0);
+	}
+}
 
+static inline DkCompareOp gxm_stencil_func_to_dk_compare_op(SceGxmStencilFunc func)
+{
+	switch (func) {
+	case SCE_GXM_STENCIL_FUNC_NEVER:
+		return DkCompareOp_Never;
+	case SCE_GXM_STENCIL_FUNC_LESS:
+		return DkCompareOp_Less;
+	case SCE_GXM_STENCIL_FUNC_EQUAL:
+		return DkCompareOp_Equal;
+	case SCE_GXM_STENCIL_FUNC_LESS_EQUAL:
+		return DkCompareOp_Lequal;
+	case SCE_GXM_STENCIL_FUNC_GREATER:
+		return DkCompareOp_Greater;
+	case SCE_GXM_STENCIL_FUNC_NOT_EQUAL:
+		return DkCompareOp_NotEqual;
+	case SCE_GXM_STENCIL_FUNC_GREATER_EQUAL:
+		return DkCompareOp_Gequal;
+	case SCE_GXM_STENCIL_FUNC_ALWAYS:
+		return DkCompareOp_Always;
+	default:
+		assert(0);
+	}
+}
+
+static inline DkStencilOp gxm_stencil_op_to_dk_stencil_op(SceGxmStencilOp op)
+{
+	switch (op) {
+	case SCE_GXM_STENCIL_OP_KEEP:
+		return DkStencilOp_Keep;
+	case SCE_GXM_STENCIL_OP_ZERO:
+		return DkStencilOp_Zero;
+	case SCE_GXM_STENCIL_OP_REPLACE:
+		return DkStencilOp_Replace;
+	case SCE_GXM_STENCIL_OP_INCR:
+		return DkStencilOp_Incr;
+	case SCE_GXM_STENCIL_OP_DECR:
+		return DkStencilOp_Decr;
+	case SCE_GXM_STENCIL_OP_INVERT:
+		return DkStencilOp_Invert;
+	case SCE_GXM_STENCIL_OP_INCR_WRAP:
+		return DkStencilOp_IncrWrap;
+	case SCE_GXM_STENCIL_OP_DECR_WRAP:
+		return DkStencilOp_DecrWrap;
+	default:
+		assert(0);
+	}
+}
 
 #endif
