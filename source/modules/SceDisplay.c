@@ -5,6 +5,7 @@
 #include <psp2/display.h>
 #include "SceDisplay.h"
 #include "SceSysmem.h"
+#include "dk_helpers.h"
 #include "module.h"
 #include "util.h"
 #include "vita_to_dk.h"
@@ -33,7 +34,6 @@ static void create_swapchain(uint32_t width, uint32_t height)
 {
 	DkImageLayoutMaker image_layout_maker;
 	DkImageLayout framebuffer_layout;
-	DkMemBlockMaker memblock_maker;
 	DkSwapchainMaker swapchain_maker;
 	DkImage const *swapchain_images_ptrs[SWAPCHAIN_SIZE];
 	uint32_t framebuffer_size, framebuffer_align;
@@ -52,9 +52,8 @@ static void create_swapchain(uint32_t width, uint32_t height)
 	framebuffer_size  = (framebuffer_size + framebuffer_align - 1) & ~(framebuffer_align - 1);
 
 	/* Create a memory block that will host the framebuffers */
-	dkMemBlockMakerDefaults(&memblock_maker, g_dk_device, SWAPCHAIN_SIZE * framebuffer_size);
-	memblock_maker.flags = DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image;
-	g_framebuffer_memblock = dkMemBlockCreate(&memblock_maker);
+	g_framebuffer_memblock = dk_alloc_memblock(g_dk_device, SWAPCHAIN_SIZE * framebuffer_size,
+						   DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image);
 
 	/* Initialize the framebuffers with the layout and backing memory we've just created */
 	for (uint32_t i = 0; i < SWAPCHAIN_SIZE; i++) {
@@ -223,7 +222,6 @@ void SceDisplay_register(void)
 int SceDisplay_init(DkDevice dk_device)
 {
 	DkQueueMaker queue_maker;
-	DkMemBlockMaker memblock_maker;
 	DkCmdBufMaker cmdbuf_maker;
 	Result res;
 
@@ -237,9 +235,8 @@ int SceDisplay_init(DkDevice dk_device)
 	g_transfer_queue = dkQueueCreate(&queue_maker);
 
 	/* Create a memory block which will be used for recording command lists using a command buffer */
-	dkMemBlockMakerDefaults(&memblock_maker, g_dk_device, CMDBUF_SIZE);
-	memblock_maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached;
-	g_cmdbuf_memblock = dkMemBlockCreate(&memblock_maker);
+	g_cmdbuf_memblock = dk_alloc_memblock(g_dk_device, CMDBUF_SIZE,
+					      DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached);
 
 	/* Create a command buffer object */
 	dkCmdBufMakerDefaults(&cmdbuf_maker, g_dk_device);
@@ -283,6 +280,7 @@ int SceDisplay_finish(void)
 	dkQueueWaitIdle(g_transfer_queue);
 	dkCmdBufDestroy(g_cmdbuf);
 	dkMemBlockDestroy(g_cmdbuf_memblock);
+	dkMemBlockDestroy(g_framebuffer_memblock);
 	dkQueueDestroy(g_transfer_queue);
 
 	return 0;

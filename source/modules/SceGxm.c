@@ -6,6 +6,7 @@
 #include <psp2/gxm.h>
 #include "SceGxm.h"
 #include "SceSysmem.h"
+#include "dk_helpers.h"
 #include "circ_buf.h"
 #include "vita_to_dk.h"
 #include "module.h"
@@ -32,6 +33,8 @@ typedef struct SceGxmContext {
 	DkCmdBuf cmdbuf;
 	DkMemBlock vertex_rb_memblock;
 	DkMemBlock fragment_rb_memblock;
+	DkMemBlock gxm_vert_unif_block_memblock;
+	DkMemBlock gxm_frag_unif_block_memblock;
 	/* State */
 	struct {
 		struct {
@@ -360,7 +363,6 @@ static bool shader_dump_cb(const char *ext, const char *dump)
 int sceGxmInitialize(const SceGxmInitializeParams *params)
 {
 	DkQueueMaker queue_maker;
-	DkMemBlockMaker memblock_maker;
 	uint32_t display_queue_num_entries;
 
 	if (g_gxm_initialized)
@@ -372,10 +374,9 @@ int sceGxmInitialize(const SceGxmInitializeParams *params)
 	g_render_queue = dkQueueCreate(&queue_maker);
 
 	/* Create memory block for the "notification region" */
-	dkMemBlockMakerDefaults(&memblock_maker, g_dk_device,
-			       ALIGN(SCE_GXM_NOTIFICATION_COUNT * sizeof(uint32_t), DK_MEMBLOCK_ALIGNMENT));
-	memblock_maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuUncached;
-	g_notification_region_memblock = dkMemBlockCreate(&memblock_maker);
+	g_notification_region_memblock = dk_alloc_memblock(g_dk_device,
+		SCE_GXM_NOTIFICATION_COUNT * sizeof(uint32_t),
+		DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuUncached);
 
 	/* Allocate and initialize the display queue, and its worker thread */
 	display_queue_num_entries = next_pow2(params->displayQueueMaxPendingCount + 1);
@@ -407,9 +408,8 @@ int sceGxmInitialize(const SceGxmInitializeParams *params)
 	sceKernelStartThread(g_display_queue->thid, sizeof(g_display_queue), &g_display_queue);
 
 	/* Create memory block for the shader code */
-	dkMemBlockMakerDefaults(&memblock_maker, g_dk_device, CODEMEMSIZE);
-	memblock_maker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Code;
-	g_code_memblock = dkMemBlockCreate(&memblock_maker);
+	g_code_memblock = dk_alloc_memblock(g_dk_device, CODEMEMSIZE,
+		DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Code);
 
 	/* Load shaders */
 	g_code_mem_offset = 0;
@@ -468,6 +468,14 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 	assert(ctx->fragment_rb_memblock);
 	assert(params->fragmentRingBufferMem == dkMemBlockGetCpuAddr(ctx->fragment_rb_memblock));
 
+	ctx->gxm_vert_unif_block_memblock = dk_alloc_memblock(g_dk_device,
+		ALIGN(sizeof(struct GXMRenderVertUniformBlock), DK_UNIFORM_BUF_ALIGNMENT),
+		DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached);
+
+	ctx->gxm_frag_unif_block_memblock = dk_alloc_memblock(g_dk_device,
+		ALIGN(sizeof(struct GXMRenderFragUniformBlock), DK_UNIFORM_BUF_ALIGNMENT),
+		DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached);
+
 	/* Init default state */
 	ctx->vertex_rb.head = 0;
 	ctx->vertex_rb.tail = 0;
@@ -513,6 +521,8 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 int sceGxmDestroyContext(SceGxmContext *context)
 {
 	dkQueueWaitIdle(g_render_queue);
+	dkMemBlockDestroy(context->gxm_vert_unif_block_memblock);
+	dkMemBlockDestroy(context->gxm_frag_unif_block_memblock);
 	dkCmdBufDestroy(context->cmdbuf);
 
 	return 0;
@@ -954,38 +964,28 @@ static inline void dk_image_view_for_gxm_depth_stencil_surface(DkImage *image, D
 
 static void set_gxm_uniform_blocks(SceGxmContext *context, const DkViewport *viewport)
 {
-	struct GXMRenderVertUniformBlock vert_unif;
-	struct GXMRenderFragUniformBlock frag_unif;
-	uint32_t uniform_size;
-
-	vert_unif = (struct GXMRenderVertUniformBlock){
+	struct GXMRenderVertUniformBlock vert_unif = {
 		.viewport_flip = {1.0f, 1.0f, 1.0f, 1.0f},
 		.viewport_flag = (0) ? 0.0f : 1.0f,
 		.screen_width = viewport->width,
 		.screen_height = viewport->height
 	};
 
-	frag_unif = (struct GXMRenderFragUniformBlock){
+	struct GXMRenderFragUniformBlock frag_unif = {
 		.back_disabled = 0.0f,
 		.front_disabled = 0.0f,
 		.writing_mask = 1.0f
 	};
 
-	memcpy(dkMemBlockGetCpuAddr(context->vertex_rb_memblock) + context->vertex_rb.head,
-				    &vert_unif, sizeof(vert_unif));
-	uniform_size = ALIGN(sizeof(vert_unif), DK_UNIFORM_BUF_ALIGNMENT);
+	memcpy(dkMemBlockGetCpuAddr(context->gxm_vert_unif_block_memblock), &vert_unif, sizeof(vert_unif));
 	dkCmdBufBindUniformBuffer(context->cmdbuf, DkStage_Vertex, 2 /* hardcoded */,
-				  dkMemBlockGetGpuAddr(context->vertex_rb_memblock) + context->vertex_rb.head,
-				  uniform_size);
-	context->vertex_rb.head += uniform_size;
+				  dkMemBlockGetGpuAddr(context->gxm_vert_unif_block_memblock),
+				  ALIGN(sizeof(vert_unif), DK_UNIFORM_BUF_ALIGNMENT));
 
-	memcpy(dkMemBlockGetCpuAddr(context->fragment_rb_memblock) + context->fragment_rb.head,
-				    &frag_unif, sizeof(frag_unif));
-	uniform_size = ALIGN(sizeof(frag_unif), DK_UNIFORM_BUF_ALIGNMENT);
+	memcpy(dkMemBlockGetCpuAddr(context->gxm_frag_unif_block_memblock), &frag_unif, sizeof(frag_unif));
 	dkCmdBufBindUniformBuffer(context->cmdbuf, DkStage_Fragment, 3 /* hardcoded */,
-				  dkMemBlockGetGpuAddr(context->fragment_rb_memblock) + context->fragment_rb.head,
-				  uniform_size);
-	context->fragment_rb.head += uniform_size;
+				  dkMemBlockGetGpuAddr(context->gxm_frag_unif_block_memblock),
+				  ALIGN(sizeof(frag_unif), DK_UNIFORM_BUF_ALIGNMENT));
 }
 
 int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
@@ -1044,14 +1044,14 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 	dkCmdBufBindRasterizerState(context->cmdbuf, &context->rasterizer_state);
 	dkCmdBufBindColorState(context->cmdbuf, &context->color_state);
 	dkCmdBufBindColorWriteState(context->cmdbuf, &context->color_write_state);
-
-	if (fragmentSyncObject)
-		dkCmdBufWaitFence(context->cmdbuf, &fragmentSyncObject->fence);
+	set_gxm_uniform_blocks(context, &viewport);
 
 	context->vertex_rb.head = 0;
 	context->fragment_rb.head = 0;
 
-	set_gxm_uniform_blocks(context, &viewport);
+	/* Wait until the framebuffer is swapped out before writing to it */
+	if (fragmentSyncObject)
+		dkCmdBufWaitFence(context->cmdbuf, &fragmentSyncObject->fence);
 
 	dkCmdBufClearDepthStencil(context->cmdbuf, true, 1.0f, 0xFF, 0);
 

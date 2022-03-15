@@ -6,6 +6,7 @@
 #include <psp2/kernel/error.h>
 #include <psp2/kernel/sysmem.h>
 #include "SceSysmem.h"
+#include "dk_helpers.h"
 #include "module.h"
 #include "protected_bitset.h"
 #include "util.h"
@@ -27,7 +28,6 @@ DECL_PROTECTED_BITSET_GET_CMP(get_memblock_info_for_addr, vita_memblock_infos, V
 SceUID sceKernelAllocMemBlock(const char *name, SceKernelMemBlockType type, SceSize size, SceKernelAllocMemBlockOpt *opt)
 {
 	VitaMemBlockInfo *block;
-	DkMemBlockMaker memblock_maker;
 	uint32_t alignment;
 	uint32_t memblock_flags;
 
@@ -62,10 +62,8 @@ SceUID sceKernelAllocMemBlock(const char *name, SceKernelMemBlockType type, SceS
 	}
 
 	/* We also map all the allocated memory blocks to the GPU */
-	dkMemBlockMakerDefaults(&memblock_maker, g_dk_device, block->size);
-	memblock_maker.storage = block->base;
-	memblock_maker.flags = memblock_flags | DkMemBlockFlags_Image;
-	block->dk_memblock = dkMemBlockCreate(&memblock_maker);
+	block->dk_memblock = dk_map_memblock(g_dk_device, block->base, block->size,
+					     memblock_flags | DkMemBlockFlags_Image);
 
 	return block->uid;
 }
