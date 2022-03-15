@@ -561,9 +561,8 @@ int sceGxmSyncObjectDestroy(SceGxmSyncObject *syncObject)
 int sceGxmNotificationWait(const SceGxmNotification *notification)
 {
 	DkVariable variable;
-	uint32_t offset = (uintptr_t)notification->address -
-			  (uintptr_t)dkMemBlockGetCpuAddr(g_notification_region_memblock);
-
+	uint32_t offset = dk_memblock_cpu_addr_offset(g_notification_region_memblock,
+						      (void *)notification->address);
 	assert(offset < SCE_GXM_NOTIFICATION_COUNT * sizeof(uint32_t));
 
 	dkVariableInitialize(&variable, g_notification_region_memblock, offset);
@@ -925,7 +924,6 @@ static inline void dk_image_view_for_gxm_color_surface(DkImage *image, DkImageVi
 {
 	DkImageLayoutMaker maker;
 	DkImageLayout layout;
-	uint32_t offset;
 
 	dkImageLayoutMakerDefaults(&maker, g_dk_device);
 	maker.flags = gxm_color_surface_type_to_dk_image_flags(surface->surfaceType) |
@@ -935,9 +933,7 @@ static inline void dk_image_view_for_gxm_color_surface(DkImage *image, DkImageVi
 	maker.dimensions[1] = surface->height;
 	maker.pitchStride = surface->strideInPixels * gxm_color_format_bytes_per_pixel(surface->colorFormat);
 	dkImageLayoutInitialize(&layout, &maker);
-
-	offset = (uintptr_t)surface->data - (uintptr_t)dkMemBlockGetCpuAddr(block);
-	dkImageInitialize(image, &layout, block, offset);
+	dkImageInitialize(image, &layout, block, dk_memblock_cpu_addr_offset(block, surface->data));
 	dkImageViewDefaults(view, image);
 }
 
@@ -948,7 +944,6 @@ static inline void dk_image_view_for_gxm_depth_stencil_surface(DkImage *image, D
 {
 	DkImageLayoutMaker maker;
 	DkImageLayout layout;
-	uint32_t offset;
 
 	dkImageLayoutMakerDefaults(&maker, g_dk_device);
 	maker.flags = DkImageFlags_UsageRender;
@@ -956,9 +951,7 @@ static inline void dk_image_view_for_gxm_depth_stencil_surface(DkImage *image, D
 	maker.dimensions[0] = width;
 	maker.dimensions[1] = height;
 	dkImageLayoutInitialize(&layout, &maker);
-
-	offset = (uintptr_t)surface->depthData - (uintptr_t)dkMemBlockGetCpuAddr(block);
-	dkImageInitialize(image, &layout, block, offset);
+	dkImageInitialize(image, &layout, block, dk_memblock_cpu_addr_offset(block, surface->depthData));
 	dkImageViewDefaults(view, image);
 }
 
@@ -1073,8 +1066,8 @@ int sceGxmEndScene(SceGxmContext *context, const SceGxmNotification *vertexNotif
 		return SCE_GXM_ERROR_NOT_WITHIN_SCENE;
 
 	if (vertexNotification) {
-		offset = (uintptr_t)vertexNotification->address -
-			 (uintptr_t)dkMemBlockGetCpuAddr(g_notification_region_memblock);
+		offset = dk_memblock_cpu_addr_offset(g_notification_region_memblock,
+						     (void *)vertexNotification->address);
 		assert(offset < SCE_GXM_NOTIFICATION_COUNT * sizeof(uint32_t));
 
 		dkVariableInitialize(&variable, g_notification_region_memblock, offset);
@@ -1083,8 +1076,8 @@ int sceGxmEndScene(SceGxmContext *context, const SceGxmNotification *vertexNotif
 	}
 
 	if (fragmentNotification) {
-		offset = (uintptr_t)fragmentNotification->address -
-			 (uintptr_t)dkMemBlockGetCpuAddr(g_notification_region_memblock);
+		offset = dk_memblock_cpu_addr_offset(g_notification_region_memblock,
+						     (void *)fragmentNotification->address);
 		assert(offset < SCE_GXM_NOTIFICATION_COUNT * sizeof(uint32_t));
 
 		dkVariableInitialize(&variable, g_notification_region_memblock, offset);

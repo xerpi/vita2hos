@@ -101,7 +101,6 @@ static bool dkimage_for_existing_framebuffer(DkImage *image, const void *addr,
 	DkMemBlock memblock;
 	DkImageLayoutMaker image_layout_maker;
 	DkImageLayout image_layout;
-	uint32_t offset;
 
 	memblock = SceSysmem_get_dk_memblock_for_addr(addr);
 	if (!memblock)
@@ -114,9 +113,7 @@ static bool dkimage_for_existing_framebuffer(DkImage *image, const void *addr,
 	image_layout_maker.dimensions[1] = height;
 	image_layout_maker.pitchStride = stride * display_pixelformat_bytes_per_pixel(pixelfmt);
 	dkImageLayoutInitialize(&image_layout, &image_layout_maker);
-
-	offset = (uintptr_t)addr - (uintptr_t)dkMemBlockGetCpuAddr(memblock);
-	dkImageInitialize(image, &image_layout, memblock, offset);
+	dkImageInitialize(image, &image_layout, memblock, dk_memblock_cpu_addr_offset(memblock, addr));
 
 	return true;
 }
