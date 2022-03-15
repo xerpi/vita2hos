@@ -109,7 +109,7 @@ int load_exe(Jit *jit, const char *filename, void **entry)
 	uint8_t *magic;
 	int ret = 0;
 
-	LOG("Opening %s for reading.", filename);
+	LOG("Opening '%s' for reading.", filename);
 	if (util_load_file(filename, &data, &size) != 0) {
 		LOG("Cannot load file.");
 		return -1;

@@ -328,16 +328,9 @@ static void load_shader_memory(DkMemBlock memblock, DkShader *shader, uint32_t *
 static void dump_shader_spirv(const char *prefix, const uint32_t *spirv, uint32_t num_instr)
 {
 	static uint32_t cnt = 0;
-	FILE *fp;
 	char name[128];
-
-	snprintf(name, sizeof(name), "%s_%d.spv", prefix, cnt++);
-
-	fp = fopen(name, "wb");
-	if (!fp)
-		return;
-	fwrite(spirv, num_instr, sizeof(uint32_t), fp);
-	fclose(fp);
+	snprintf(name, sizeof(name), VITA2HOS_DUMP_SHADER_PATH "/%s_%d.spv", prefix, cnt++);
+	util_write_binary_file(name, spirv, num_instr * sizeof(uint32_t));
 }
 #endif
 
@@ -345,16 +338,9 @@ static void dump_shader_spirv(const char *prefix, const uint32_t *spirv, uint32_
 static void dump_shader_glsl(const char *prefix, const char *glsl)
 {
 	static uint32_t cnt = 0;
-	FILE *fp;
 	char name[128];
-
-	snprintf(name, sizeof(name), "%s_%d.glsl", prefix, cnt++);
-
-	fp = fopen(name, "w");
-	if (!fp)
-		return;
-	fputs(glsl, fp);
-	fclose(fp);
+	snprintf(name, sizeof(name), VITA2HOS_DUMP_SHADER_PATH "/%s_%d.glsl", prefix, cnt++);
+	util_write_text_file(name, glsl);
 }
 #endif
 
