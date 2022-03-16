@@ -460,6 +460,7 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 
 	dkRasterizerStateDefaults(&ctx->rasterizer_state);
 	ctx->rasterizer_state.cullMode = DkFace_None;
+	ctx->rasterizer_state.frontFace = DkFrontFace_CW;
 
 	dkColorStateDefaults(&ctx->color_state);
 	dkColorWriteStateDefaults(&ctx->color_write_state);
