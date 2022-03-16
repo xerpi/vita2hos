@@ -43,6 +43,7 @@ typedef struct SceGxmContext {
 		const SceGxmVertexProgram *vertex_program;
 		const SceGxmFragmentProgram *fragment_program;
 		bool in_scene;
+		bool two_sided_mode;
 		DkRasterizerState rasterizer_state;
 		DkColorState color_state;
 		DkColorWriteState color_write_state;
@@ -52,6 +53,7 @@ typedef struct SceGxmContext {
 			uint8_t compare_mask;
 			uint8_t write_mask;
 		} front_stencil_state, back_stencil_state;
+		/* Dirty state tracking */
 		union {
 			struct {
 				uint32_t shaders : 1;
@@ -458,6 +460,12 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 	ctx->fragment_rb.tail = 0;
 	ctx->fragment_rb.size = params->fragmentRingBufferMemSize;
 
+	ctx->vertex_program = NULL;
+	ctx->fragment_program = NULL;
+
+	ctx->in_scene = false;
+	ctx->two_sided_mode = false;
+
 	dkRasterizerStateDefaults(&ctx->rasterizer_state);
 	ctx->rasterizer_state.cullMode = DkFace_None;
 	ctx->rasterizer_state.frontFace = DkFrontFace_CW;
@@ -834,6 +842,9 @@ void sceGxmSetFrontDepthFunc(SceGxmContext *context, SceGxmDepthFunc depthFunc)
 {
 	context->depth_stencil_state.depthCompareOp = gxm_depth_func_to_dk_compare_op(depthFunc);
 	context->dirty.bit.depth_stencil = true;
+
+	if (!context->two_sided_mode)
+		sceGxmSetBackDepthFunc(context, depthFunc);
 }
 
 void sceGxmSetFrontDepthWriteEnable(SceGxmContext *context, SceGxmDepthWriteMode enable)
@@ -841,12 +852,28 @@ void sceGxmSetFrontDepthWriteEnable(SceGxmContext *context, SceGxmDepthWriteMode
 	context->depth_stencil_state.depthWriteEnable =
 		(enable == SCE_GXM_DEPTH_WRITE_ENABLED) ? 1 : 0;
 	context->dirty.bit.depth_stencil = true;
+
+	if (!context->two_sided_mode)
+		sceGxmSetBackDepthWriteEnable(context, enable);
 }
 
 void sceGxmSetFrontStencilRef(SceGxmContext *context, unsigned int sref)
 {
 	context->front_stencil_state.ref = sref;
 	context->dirty.bit.front_stencil = true;
+
+	if (!context->two_sided_mode)
+		sceGxmSetBackStencilRef(context, sref);
+}
+
+void sceGxmSetBackDepthFunc(SceGxmContext *context, SceGxmDepthFunc depthFunc)
+{
+	/* Unsupported */
+}
+
+void sceGxmSetBackDepthWriteEnable(SceGxmContext *context, SceGxmDepthWriteMode enable)
+{
+	/* Unsupported */
 }
 
 void sceGxmSetBackStencilRef(SceGxmContext *context, unsigned int sref)
@@ -868,6 +895,11 @@ void sceGxmSetFrontStencilFunc(SceGxmContext *context, SceGxmStencilFunc func,
 	context->front_stencil_state.write_mask = writeMask;
 	context->dirty.bit.depth_stencil = true;
 	context->dirty.bit.front_stencil = true;
+
+	if (!context->two_sided_mode) {
+		sceGxmSetBackStencilFunc(context, func, stencilFail, depthFail, depthPass,
+					 compareMask, writeMask);
+	}
 }
 
 void sceGxmSetBackStencilFunc(SceGxmContext *context, SceGxmStencilFunc func,
@@ -1421,6 +1453,8 @@ void SceGxm_register(void)
 		{0x14BD831F, sceGxmSetFrontDepthFunc},
 		{0xF32CBF34, sceGxmSetFrontDepthWriteEnable},
 		{0x8FA6FE44, sceGxmSetFrontStencilRef},
+		{0xB042A4D2, sceGxmSetBackDepthFunc},
+		{0xC18B706B, sceGxmSetBackDepthWriteEnable},
 		{0x866A0517, sceGxmSetBackStencilRef},
 		{0xB8645A9A, sceGxmSetFrontStencilFunc},
 		{0x1A68C8D2, sceGxmSetBackStencilFunc},
