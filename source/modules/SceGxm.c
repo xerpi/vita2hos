@@ -58,6 +58,7 @@ typedef struct SceGxmContext {
 				uint32_t depth_stencil : 1;
 				uint32_t front_stencil : 1;
 				uint32_t back_stencil : 1;
+				uint32_t color_write : 1;
 			} bit;
 			uint32_t raw;
 		} dirty;
@@ -999,7 +1000,6 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 	dkCmdBufSetScissors(context->cmdbuf, 0, &scissor, 1);
 	dkCmdBufBindRasterizerState(context->cmdbuf, &context->rasterizer_state);
 	dkCmdBufBindColorState(context->cmdbuf, &context->color_state);
-	dkCmdBufBindColorWriteState(context->cmdbuf, &context->color_write_state);
 	set_vita3k_gxm_uniform_blocks(context, &viewport);
 
 	context->vertex_rb.head = 0;
@@ -1162,7 +1162,6 @@ void sceGxmSetVertexProgram(SceGxmContext *context, const SceGxmVertexProgram *v
 
 void sceGxmSetFragmentProgram(SceGxmContext *context, const SceGxmFragmentProgram *fragmentProgram)
 {
-	DkColorWriteState color_write_state;
 	uint32_t mask;
 
 	mask = DkColorMask_R * !!(fragmentProgram->blendInfo.colorMask & SCE_GXM_COLOR_MASK_R) |
@@ -1170,9 +1169,8 @@ void sceGxmSetFragmentProgram(SceGxmContext *context, const SceGxmFragmentProgra
 	       DkColorMask_B * !!(fragmentProgram->blendInfo.colorMask & SCE_GXM_COLOR_MASK_B) |
 	       DkColorMask_A * !!(fragmentProgram->blendInfo.colorMask & SCE_GXM_COLOR_MASK_A);
 
-	dkColorWriteStateDefaults(&color_write_state);
-	dkColorWriteStateSetMask(&color_write_state, 0, mask);
-	dkCmdBufBindColorWriteState(context->cmdbuf, &color_write_state);
+	dkColorWriteStateSetMask(&context->color_write_state, 0, mask);
+	context->dirty.bit.color_write = true;
 
 	context->fragment_program = fragmentProgram;
 	context->dirty.bit.shaders = true;
@@ -1320,6 +1318,11 @@ static void context_flush_dirty_state(SceGxmContext *context)
 				context->back_stencil_state.ref,
 				context->back_stencil_state.compare_mask);
 		context->dirty.bit.back_stencil = false;
+	}
+
+	if (context->dirty.bit.color_write) {
+		dkCmdBufBindColorWriteState(context->cmdbuf, &context->color_write_state);
+		context->dirty.bit.color_write = false;
 	}
 }
 
