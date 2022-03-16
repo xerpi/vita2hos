@@ -1009,7 +1009,8 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 	if (fragmentSyncObject)
 		dkCmdBufWaitFence(context->cmdbuf, &fragmentSyncObject->fence);
 
-	dkCmdBufClearDepthStencil(context->cmdbuf, true, 1.0f, 0xFF, 0);
+	if (depthStencil)
+		dkCmdBufClearDepthStencil(context->cmdbuf, true, 1.0f, 0xFF, 0);
 
 	context->in_scene = true;
 
