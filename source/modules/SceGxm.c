@@ -6,15 +6,16 @@
 #include <psp2/gxm.h>
 #include "SceGxm.h"
 #include "SceSysmem.h"
-#include "dk_helpers.h"
 #include "circ_buf.h"
-#include "vita_to_dk.h"
+#include "config.h"
+#include "dk_helpers.h"
+#include "log.h"
 #include "module.h"
 #include "protected_bitset.h"
-#include "util.h"
-#include "log.h"
-#include "vita3k_shader_recompiler_iface_c.h"
 #include "uam_compiler_iface_c.h"
+#include "util.h"
+#include "vita3k_shader_recompiler_iface_c.h"
+#include "vita_to_dk.h"
 
 #define DUMP_SHADER_SPIRV	0
 #define DUMP_SHADER_GLSL	0
