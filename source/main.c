@@ -14,6 +14,7 @@
 #include "SceDisplay.h"
 #include "SceGxm.h"
 #include "SceTouch.h"
+#include "config.h"
 #include "module.h"
 #include "log.h"
 #include "load.h"
@@ -119,11 +120,6 @@ int main(int argc, char *argv[])
 	register_modules();
 
 	ret = load_exe(&jit, VITA2HOS_EXE_FILE, &entry);
-	if (ret != 0) {
-		LOG("Could not find '"VITA2HOS_EXE_FILE"'. Falling back to '/test.elf'...");
-		ret = load_exe(&jit, "/test.elf", &entry);
-	}
-
 	if (ret == 0) {
 		LOG("Launching PlayStation Vita executable!");
 
