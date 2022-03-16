@@ -467,7 +467,7 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 
 	ctx->depth_stencil_state.depthTestEnable = true;
 	ctx->depth_stencil_state.depthWriteEnable = true;
-	ctx->depth_stencil_state.stencilTestEnable = false;
+	ctx->depth_stencil_state.stencilTestEnable = true;
 	ctx->depth_stencil_state.depthCompareOp = DkCompareOp_Lequal;
 
 	ctx->depth_stencil_state.stencilFrontFailOp = DkStencilOp_Keep;
