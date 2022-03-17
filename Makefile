@@ -66,7 +66,7 @@ DEFINES		:= -DVITA2HOS_MAJOR=\"$(VITA2HOS_MAJOR)\" -DVITA2HOS_MINOR=\"$(VITA2HOS
 #---------------------------------------------------------------------------------
 # options for code generation
 #---------------------------------------------------------------------------------
-ARCH	:=	-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIC -nostartfiles
+ARCH	:=	-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIC
 
 CFLAGS	:=	-g3 -Wall -O2 -ffunction-sections \
 			$(ARCH) $(DEFINES)
