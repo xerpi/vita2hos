@@ -15,7 +15,7 @@
 
 #include "basic_vsh_dksh.h"
 #include "color_fsh_dksh.h"
-
+#include <assert.h>
 #define SCE_GXM_NOTIFICATION_COUNT	512
 
 #define MAX_GXM_MAPPED_MEMORY_BLOCKS	256
@@ -366,6 +366,63 @@ int sceGxmTerminate()
 	return 0;
 }
 
+static bool created = false;
+static DkImageLayout depth_layout;
+static DkImage depth_image;
+static DkImageView depth_view;
+static DkMemBlock depth_memblock;
+
+static void ensure_shadow_depth_stencil_buffer(SceGxmContext *context, uint32_t width, uint32_t height)
+{
+	uint64_t size;
+	uint32_t align;
+	void *addr;
+	DkImageLayoutMaker layout_maker;
+
+	LOG("ensure_shadow_depth_stencil_buffer 1");
+
+	if (created)
+		return;
+
+	assert(width > 0 && height > 0);
+
+	LOG("  creating shadow depth/stencil buffer!");
+	dkImageLayoutMakerDefaults(&layout_maker, g_dk_device);
+	layout_maker.flags = DkImageFlags_UsageRender | DkImageFlags_HwCompression;
+	layout_maker.format = DkImageFormat_Z24S8;
+	layout_maker.dimensions[0] = width;
+	layout_maker.dimensions[1] = height;
+	dkImageLayoutInitialize(&depth_layout, &layout_maker);
+
+	size  = dkImageLayoutGetSize(&depth_layout);
+	align = dkImageLayoutGetAlignment(&depth_layout);
+	addr = aligned_alloc(align, size);
+	assert(size > 0 && size <= UINT32_MAX && addr != NULL);
+
+	LOG("Shadow size: 0x%llx, align: 0x%x, addr: %p", size, align, addr);
+
+	DkMemBlockMaker memblock_maker;
+	dkMemBlockMakerDefaults(&memblock_maker, g_dk_device, (uint32_t)size);
+	//memblock_maker.flags = DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image;
+	memblock_maker.flags |= DkMemBlockFlags_Image;
+	//memblock_maker.storage = addr;
+	depth_memblock = dkMemBlockCreate(&memblock_maker);
+	assert(depth_memblock);
+
+	dkImageInitialize(&depth_image, &depth_layout, depth_memblock, 0);
+	dkImageViewDefaults(&depth_view, &depth_image);
+
+	created = true;
+}
+
+static inline DkMemBlock dk_alloc_memblock(DkDevice device, uint32_t size, uint32_t flags)
+{
+	DkMemBlockMaker memblock_maker;
+	dkMemBlockMakerDefaults(&memblock_maker, device, ALIGN(size, DK_MEMBLOCK_ALIGNMENT));
+	memblock_maker.flags = flags;
+	return dkMemBlockCreate(&memblock_maker);
+}
+
 int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **context)
 {
 	DkCmdBufMaker cmdbuf_maker;
@@ -378,7 +435,8 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 	ctx->params = *params;
 
 	/* Get the passed backing storage buffer for the main command buffer */
-	ctx->cmdbuf_memblock = SceSysmem_get_dk_memblock_for_addr(params->vdmRingBufferMem);
+	//ctx->cmdbuf_memblock = SceSysmem_get_dk_memblock_for_addr(params->vdmRingBufferMem);
+	ctx->cmdbuf_memblock = dk_alloc_memblock(g_dk_device, 16*1024*1024, DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached);
 	assert(ctx->cmdbuf_memblock);
 
 	/* Create the command buffer */
@@ -387,23 +445,26 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 	assert(ctx->cmdbuf);
 
 	/* Assing the backing storage buffer to the main command buffer */
-	dkCmdBufAddMemory(ctx->cmdbuf, ctx->cmdbuf_memblock, 0, ctx->params.vdmRingBufferMemSize);
+	dkCmdBufAddMemory(ctx->cmdbuf, ctx->cmdbuf_memblock, 0, 16*1024*1024);
 
 	/* Get the passed vertex ringbuffer for vertex default uniform buffer reservations */
-	ctx->vertex_ringbuf.memblock = SceSysmem_get_dk_memblock_for_addr(params->vertexRingBufferMem);
+	//ctx->vertex_ringbuf.memblock = SceSysmem_get_dk_memblock_for_addr(params->vertexRingBufferMem);
+	ctx->vertex_ringbuf.memblock = dk_alloc_memblock(g_dk_device, 16*1024*1024, DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached);
 	assert(ctx->vertex_ringbuf.memblock);
-	assert(params->vertexRingBufferMem == dkMemBlockGetCpuAddr(ctx->vertex_ringbuf.memblock));
+	//assert(params->vertexRingBufferMem == dkMemBlockGetCpuAddr(ctx->vertex_ringbuf.memblock));
 	ctx->vertex_ringbuf.head = 0;
 	ctx->vertex_ringbuf.tail = 0;
-	ctx->vertex_ringbuf.size = params->vertexRingBufferMemSize;
+	ctx->vertex_ringbuf.size = 16*1024*1024;
 
 	/* Get the passed fragment ringbuffer for fragment default uniform buffer reservations */
-	ctx->fragment_ringbuf.memblock = SceSysmem_get_dk_memblock_for_addr(params->fragmentRingBufferMem);
+	ctx->fragment_ringbuf.memblock = dk_alloc_memblock(g_dk_device, 16*1024*1024, DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached);
 	assert(ctx->fragment_ringbuf.memblock);
-	assert(params->fragmentRingBufferMem == dkMemBlockGetCpuAddr(ctx->fragment_ringbuf.memblock));
+	//assert(params->fragmentRingBufferMem == dkMemBlockGetCpuAddr(ctx->fragment_ringbuf.memblock));
 	ctx->fragment_ringbuf.head = 0;
 	ctx->fragment_ringbuf.tail = 0;
-	ctx->fragment_ringbuf.size = params->fragmentRingBufferMemSize;
+	ctx->fragment_ringbuf.size = 16*1024*1024;
+
+	ensure_shadow_depth_stencil_buffer(ctx, 960, 544);
 
 	*context = ctx;
 
@@ -654,7 +715,7 @@ static inline void dk_image_view_for_gxm_color_surface(DkImage *image, DkImageVi
 
 	dkImageLayoutMakerDefaults(&maker, g_dk_device);
 	maker.flags = gxm_color_surface_type_to_dk_image_flags(surface->surfaceType) |
-		      DkImageFlags_UsageRender | DkImageFlags_Usage2DEngine;
+		      DkImageFlags_UsageRender | DkImageFlags_Usage2DEngine | DkImageFlags_HwCompression;
 	maker.format = gxm_color_format_to_dk_image_format(surface->colorFormat);
 	maker.dimensions[0] = surface->width;
 	maker.dimensions[1] = surface->height;
@@ -666,27 +727,122 @@ static inline void dk_image_view_for_gxm_color_surface(DkImage *image, DkImageVi
 	dkImageViewDefaults(view, image);
 }
 
+#define FB_NUM 2
+#define FB_WIDTH  960
+#define FB_HEIGHT 544
+static int inited = 0;
+static DkMemBlock g_depthMemBlock;
+static DkImage g_depth;
+
+static DkMemBlock g_framebufferMemBlock;
+static DkMemBlock g_depthMemBlock;
+static DkImage g_framebuffers[FB_NUM];
+
+static DkMemBlock g_cmdbufMemBlock;
+static DkCmdBuf g_cmdbuf;
+static DkCmdList g_cmdsRender;
+
+void init()
+{
+	DkMemBlockMaker memBlockMaker;
+
+	if (inited)
+		return;
+
+	// Calculate layout for the framebuffers
+	DkImageLayoutMaker imageLayoutMaker;
+	dkImageLayoutMakerDefaults(&imageLayoutMaker, g_dk_device);
+	imageLayoutMaker.flags = DkImageFlags_UsageRender | DkImageFlags_PitchLinear;
+	imageLayoutMaker.format = DkImageFormat_RGBA8_Unorm;
+	imageLayoutMaker.dimensions[0] = FB_WIDTH;
+	imageLayoutMaker.dimensions[1] = FB_HEIGHT;
+	imageLayoutMaker.pitchStride = FB_WIDTH * 4;
+
+	// Calculate layout for the framebuffers
+	DkImageLayout framebufferLayout;
+	dkImageLayoutInitialize(&framebufferLayout, &imageLayoutMaker);
+
+	// Retrieve necessary size and alignment for the framebuffers
+	uint32_t framebufferSize  = dkImageLayoutGetSize(&framebufferLayout);
+	uint32_t framebufferAlign = dkImageLayoutGetAlignment(&framebufferLayout);
+	framebufferSize = (framebufferSize + framebufferAlign - 1) &~ (framebufferAlign - 1);
+
+	LOG("FB %d x %d, size: 0x%x, align: 0x%x", FB_WIDTH, FB_HEIGHT, framebufferSize, framebufferAlign);
+
+	// Create a memory block that will host the framebuffers
+	dkMemBlockMakerDefaults(&memBlockMaker, g_dk_device, FB_NUM*framebufferSize);
+	memBlockMaker.flags = DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image;
+	g_framebufferMemBlock = dkMemBlockCreate(&memBlockMaker);
+
+	for (unsigned i = 0; i < FB_NUM; i++) {
+		dkImageInitialize(&g_framebuffers[i], &framebufferLayout, g_framebufferMemBlock, i*framebufferSize);
+	}
+
+	// Calculate layout for the depths
+	DkImageLayoutMaker depthImageLayoutMaker;
+	dkImageLayoutMakerDefaults(&depthImageLayoutMaker, g_dk_device);
+	depthImageLayoutMaker.flags = DkImageFlags_UsageRender | DkImageFlags_PitchLinear;
+	depthImageLayoutMaker.format = DkImageFormat_Z24S8;
+	depthImageLayoutMaker.dimensions[0] = FB_WIDTH;
+	depthImageLayoutMaker.dimensions[1] = FB_HEIGHT;
+	depthImageLayoutMaker.pitchStride = FB_WIDTH * 4;
+
+	// Calculate layout for the depths
+	DkImageLayout depthLayout;
+	dkImageLayoutInitialize(&depthLayout, &depthImageLayoutMaker);
+
+	// Retrieve necessary size and alignment for the depths
+	uint32_t depthSize  = dkImageLayoutGetSize(&depthLayout);
+	uint32_t depthAlign = dkImageLayoutGetAlignment(&depthLayout);
+	depthSize = (depthSize + depthAlign - 1) &~ (depthAlign - 1);
+
+	LOG("DS %d x %d, size: 0x%x, align: 0x%x", FB_WIDTH, FB_HEIGHT, depthSize, depthAlign);
+
+	// Create a memory block that will host the depths
+	dkMemBlockMakerDefaults(&memBlockMaker, g_dk_device, depthSize);
+	memBlockMaker.flags = DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image;
+	g_depthMemBlock = dkMemBlockCreate(&memBlockMaker);
+
+	dkImageInitialize(&g_depth, &depthLayout, g_depthMemBlock, 0);
+
+	// Create a memory block which will be used for recording command lists using a command buffer
+	dkMemBlockMakerDefaults(&memBlockMaker, g_dk_device, CMDMEMSIZE);
+	memBlockMaker.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached;
+	g_cmdbufMemBlock = dkMemBlockCreate(&memBlockMaker);
+
+	// Create a command buffer object
+	DkCmdBufMaker cmdbufMaker;
+	dkCmdBufMakerDefaults(&cmdbufMaker, g_dk_device);
+	g_cmdbuf = dkCmdBufCreate(&cmdbufMaker);
+
+	// Feed our memory to the command buffer so that we can start recording commands
+	dkCmdBufAddMemory(g_cmdbuf, g_cmdbufMemBlock, 0, CMDMEMSIZE);
+
+
+	inited = 1;
+}
+
 int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 		     const SceGxmRenderTarget *renderTarget, const SceGxmValidRegion *validRegion,
 		     SceGxmSyncObject *vertexSyncObject, SceGxmSyncObject *fragmentSyncObject,
 		     const SceGxmColorSurface *colorSurface,
 		     const SceGxmDepthStencilSurface *depthStencil)
 {
-	DkMemBlock color_surface_block;
+	/*DkMemBlock color_surface_block;
 	DkImage color_surface_image;
-	DkImageView color_surface_view;
-	DkRasterizerState rasterizer_state;
+	DkImageView color_surface_view;*/
+	/*DkRasterizerState rasterizer_state;
 	DkColorState color_state;
 	DkColorWriteState color_write_state;
 	DkViewport viewport = { 0.0f, 0.0f, (float)renderTarget->params.width, (float)renderTarget->params.height, 0.0f, 1.0f };
 	DkScissor scissor = { 0, 0, renderTarget->params.width, renderTarget->params.height };
-	DkShader const* shaders[] = { &g_vertexShader, &g_fragmentShader };
-	SceGxmColorSurfaceInner *color_surface_inner = (SceGxmColorSurfaceInner *)colorSurface;
+	DkShader const* shaders[] = { &g_vertexShader, &g_fragmentShader };*/
+	//SceGxmColorSurfaceInner *color_surface_inner = (SceGxmColorSurfaceInner *)colorSurface;
 
 	if (context->scene.valid)
 		return SCE_GXM_ERROR_WITHIN_SCENE;
 
-	color_surface_block = SceSysmem_get_dk_memblock_for_addr(color_surface_inner->data);
+	/*color_surface_block = SceSysmem_get_dk_memblock_for_addr(color_surface_inner->data);
 	if (!color_surface_block)
 		return SCE_GXM_ERROR_INVALID_VALUE;
 
@@ -696,25 +852,53 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 		dkMemBlockGetCpuAddr(color_surface_block));
 
 	dk_image_view_for_gxm_color_surface(&color_surface_image, &color_surface_view,
-					    color_surface_block, color_surface_inner);
+					    color_surface_block, color_surface_inner);*/
 
-	dkRasterizerStateDefaults(&rasterizer_state);
-	dkColorStateDefaults(&color_state);
-	dkColorWriteStateDefaults(&color_write_state);
+	init();
 
-	dkCmdBufClear(context->cmdbuf);
+	//dkQueueWaitIdle(g_render_queue);
 
-	dkCmdBufBindRenderTarget(context->cmdbuf, &color_surface_view, NULL);
+	//dkCmdBufClear(context->cmdbuf);
 
-	dkCmdBufSetViewports(context->cmdbuf, 0, &viewport, 1);
-	dkCmdBufSetScissors(context->cmdbuf, 0, &scissor, 1);
-	dkCmdBufBindShaders(context->cmdbuf, DkStageFlag_GraphicsMask, shaders, ARRAY_SIZE(shaders));
-	dkCmdBufBindRasterizerState(context->cmdbuf, &rasterizer_state);
-	dkCmdBufBindColorState(context->cmdbuf, &color_state);
-	dkCmdBufBindColorWriteState(context->cmdbuf, &color_write_state);
+	DkImageView imageView;
+	static uint32_t frame = 0;
+	dkImageViewDefaults(&imageView, &g_framebuffers[frame]);
+	frame = (frame + 1) % FB_NUM;
 
-	if (fragmentSyncObject)
-		dkCmdBufWaitFence(context->cmdbuf, &fragmentSyncObject->fence);
+	DkImageView depthView;
+	dkImageViewDefaults(&depthView, &g_depth);
+	dkCmdBufBindRenderTarget(g_cmdbuf, &imageView, &depthView);
+
+	// Declare structs that will be used for binding state
+	DkViewport viewport = { 0.0f, 0.0f, (float)FB_WIDTH, (float)FB_HEIGHT, 0.0f, 1.0f };
+	DkScissor scissor = { 0, 0, FB_WIDTH, FB_HEIGHT };
+	DkShader const* shaders[] = { &g_vertexShader, &g_fragmentShader };
+	DkRasterizerState rasterizerState;
+	DkColorState colorState;
+	DkColorWriteState colorWriteState;
+
+	// Initialize state structs with the deko3d defaults
+	dkRasterizerStateDefaults(&rasterizerState);
+	dkColorStateDefaults(&colorState);
+	dkColorWriteStateDefaults(&colorWriteState);
+
+	// Generate the main rendering command list
+	dkCmdBufSetViewports(g_cmdbuf, 0, &viewport, 1);
+	dkCmdBufSetScissors(g_cmdbuf, 0, &scissor, 1);
+	dkCmdBufClearColorFloat(g_cmdbuf, 0, DkColorMask_RGBA, 0.125f, 0.294f, 0.478f, 1.0f);
+	dkCmdBufBindShaders(g_cmdbuf, DkStageFlag_GraphicsMask, shaders, sizeof(shaders)/sizeof(shaders[0]));
+	dkCmdBufBindRasterizerState(g_cmdbuf, &rasterizerState);
+	dkCmdBufBindColorState(g_cmdbuf, &colorState);
+	dkCmdBufBindColorWriteState(g_cmdbuf, &colorWriteState);
+	dkCmdBufDraw(g_cmdbuf, DkPrimitive_Triangles, 3, 1, 0, 0);
+	g_cmdsRender = dkCmdBufFinishList(g_cmdbuf);
+
+	dkQueueSubmitCommands(g_render_queue, g_cmdsRender);
+
+	dkQueueWaitIdle(g_render_queue);
+	dkCmdBufClear(g_cmdbuf);
+
+	svcSleepThread(16 * 1000 * 1000ull);
 
 	context->vertex_ringbuf.head = 0;
 	context->fragment_ringbuf.head = 0;
@@ -735,28 +919,19 @@ int sceGxmEndScene(SceGxmContext *context, const SceGxmNotification *vertexNotif
 	if (!context->scene.valid)
 		return SCE_GXM_ERROR_NOT_WITHIN_SCENE;
 
-	if (vertexNotification) {
-		offset = (uintptr_t)vertexNotification->address -
-			 (uintptr_t)dkMemBlockGetCpuAddr(g_notification_region_memblock);
-		assert(offset < SCE_GXM_NOTIFICATION_COUNT * sizeof(uint32_t));
+	// Fragment barrier, to make sure we finish previous work before discarding the depth buffer
+	//dkCmdBufBarrier(context->cmdbuf, DkBarrier_Fragments, 0);
 
-		dkVariableInitialize(&variable, g_notification_region_memblock, offset);
-		dkCmdBufSignalVariable(context->cmdbuf, &variable, DkVarOp_Set,
-				       vertexNotification->value, DkPipelinePos_Rasterizer);
-	}
+	// Discard the depth buffer since we don't need it anymore
+	//dkCmdBufDiscardDepthStencil(context->cmdbuf);
 
-	if (fragmentNotification) {
-		offset = (uintptr_t)fragmentNotification->address -
-			 (uintptr_t)dkMemBlockGetCpuAddr(g_notification_region_memblock);
-		assert(offset < SCE_GXM_NOTIFICATION_COUNT * sizeof(uint32_t));
-
-		dkVariableInitialize(&variable, g_notification_region_memblock, offset);
-		dkCmdBufSignalVariable(context->cmdbuf, &variable, DkVarOp_Set,
-				       fragmentNotification->value, DkPipelinePos_Bottom);
-	}
-
-	cmd_list = dkCmdBufFinishList(context->cmdbuf);
+	/*cmd_list = dkCmdBufFinishList(context->cmdbuf);
 	dkQueueSubmitCommands(g_render_queue, cmd_list);
+
+	dkQueueWaitIdle(g_render_queue);*/
+
+	//svcSleepThread(100 * 1000 * 1000ull);
+	//dkCmdBufClear(context->cmdbuf);
 
 	context->scene.valid = false;
 
@@ -769,6 +944,9 @@ static int SceGxmDisplayQueue_thread(SceSize args, void *argp)
 	DisplayQueueEntry *entry;
 
 	ueventSignal(&queue->ready_evflag);
+
+	while (1)
+		svcSleepThread(1000 * 1000 * 100ull);
 
 	while (!queue->exit_thread) {
 		while (CIRC_CNT(queue->head, queue->tail, queue->num_entries) > 0) {
@@ -805,6 +983,8 @@ int sceGxmDisplayQueueAddEntry(SceGxmSyncObject *oldBuffer, SceGxmSyncObject *ne
 	DisplayQueueControlBlock *queue = g_display_queue;
 
 	LOG("sceGxmDisplayQueueAddEntry: old: %p, new: %p", oldBuffer, newBuffer);
+
+	return 0;
 
 	/* Signal back buffer fence when rendering finishes */
 	dkQueueSignalFence(g_render_queue, &newBuffer->fence, true);
@@ -853,19 +1033,22 @@ int sceGxmSetVertexStream(SceGxmContext *context, unsigned int streamIndex, cons
 	DkVtxAttribState vertex_attrib_state[SCE_GXM_MAX_VERTEX_ATTRIBUTES];
 	DkVtxBufferState vertex_buffer_state;
 	VitaMemBlockInfo *stream_block;
-	uint32_t stream_offset;
+	ptrdiff_t stream_offset;
 	SceGxmVertexAttribute *attributes = context->vertex_program->attributes;
 	uint32_t attribute_count = context->vertex_program->attributeCount;
 	SceGxmVertexStream *streams = context->vertex_program->streams;
+
+	return 0;
 
 	stream_block = SceSysmem_get_vita_memblock_info_for_addr(streamData);
 	if (!stream_block)
 		return SCE_GXM_ERROR_INVALID_VALUE;
 
 	stream_offset = (uintptr_t)streamData - (uintptr_t)stream_block->base;
+	assert(stream_offset >= 0);
 	dkCmdBufBindVtxBuffer(context->cmdbuf, streamIndex,
-			      dkMemBlockGetGpuAddr(stream_block->dk_memblock) + stream_offset,
-			      stream_block->size - stream_offset);
+			      dkMemBlockGetGpuAddr(stream_block->dk_memblock),
+			      dkMemBlockGetSize(stream_block->dk_memblock));
 
 	memset(vertex_attrib_state, 0, attribute_count * sizeof(DkVtxAttribState));
 	for (uint32_t i = 0; i < attribute_count; i++) {
@@ -899,6 +1082,8 @@ int sceGxmReserveVertexDefaultUniformBuffer(SceGxmContext *context, void **unifo
 	else if (!context->vertex_program)
 		return SCE_GXM_ERROR_NULL_PROGRAM;
 
+	return 0;
+
 	program = context->vertex_program->programId->programHeader;
 
 	default_uniform_buffer_count = program->default_uniform_buffer_count;
@@ -926,6 +1111,8 @@ int sceGxmReserveFragmentDefaultUniformBuffer(SceGxmContext *context, void **uni
 	uint32_t default_uniform_buffer_count;
 	uint32_t uniform_buf_size;
 	const SceGxmProgram *program;
+
+	return 0;
 
 	if (!context->scene.valid)
 		return SCE_GXM_ERROR_NOT_WITHIN_SCENE;
@@ -987,7 +1174,9 @@ int sceGxmDraw(SceGxmContext *context, SceGxmPrimitiveType primType, SceGxmIndex
 	       const void *indexData, unsigned int indexCount)
 {
 	VitaMemBlockInfo *index_block;
-	uint32_t index_offset;
+	ptrdiff_t index_offset;
+
+	return 0;
 
 	LOG("sceGxmDraw: primType: 0x%x, indexCount: %d", primType, indexCount);
 
@@ -996,9 +1185,11 @@ int sceGxmDraw(SceGxmContext *context, SceGxmPrimitiveType primType, SceGxmIndex
 		return SCE_GXM_ERROR_INVALID_VALUE;
 
 	index_offset = (uintptr_t)indexData - (uintptr_t)index_block->base;
+	assert(index_offset >= 0);
+	LOG("  index offset: 0x%x", index_offset);
 	dkCmdBufBindIdxBuffer(context->cmdbuf, gxm_to_dk_idx_format(indexType),
-			      dkMemBlockGetGpuAddr(index_block->dk_memblock) + index_offset);
-	dkCmdBufDrawIndexed(context->cmdbuf, gxm_to_dk_primitive(primType), indexCount, 1, 0, 0, 0);
+			      dkMemBlockGetGpuAddr(index_block->dk_memblock));
+	dkCmdBufDrawIndexed(context->cmdbuf, gxm_to_dk_primitive(primType), indexCount, 1, 0, index_offset, 0);
 
 	return 0;
 }

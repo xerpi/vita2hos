@@ -1,0 +1,116 @@
+diff --git a/Vita3K b/Vita3K
+index 757a327..a64b09e 160000
+--- a/Vita3K
++++ b/Vita3K
+@@ -1 +1 @@
+-Subproject commit 757a32725c77cd8e96fbb2c003a74d52dfdf283a
++Subproject commit a64b09ee23a26d55f326c0615da6d5a53d974488-dirty
+diff --git a/source/modules/SceGxm.c b/source/modules/SceGxm.c
+index fcfff36..d978dae 100644
+--- a/source/modules/SceGxm.c
++++ b/source/modules/SceGxm.c
+@@ -978,6 +978,52 @@ static void set_vita3k_gxm_uniform_blocks(SceGxmContext *context, const DkViewpo
+ 				  ALIGN(sizeof(frag_unif), DK_UNIFORM_BUF_ALIGNMENT));
+ }
+ 
++static bool created = false;
++static DkImageLayout depth_layout;
++static DkImage depth_image;
++static DkImageView depth_view;
++static DkMemBlock depth_memblock;
++
++static void ensure_shadow_depth_stencil_buffer(SceGxmContext *context, uint32_t width, uint32_t height)
++{
++	uint64_t size;
++	uint32_t align;
++	void *addr;
++	DkImageLayoutMaker layout_maker;
++
++	LOG("ensure_shadow_depth_stencil_buffer 1");
++
++	if (created)
++		return;
++
++	created = true;
++
++	LOG("  creating shadow depth/stencil buffer!");
++	dkImageLayoutMakerDefaults(&layout_maker, g_dk_device);
++	layout_maker.flags = DkImageFlags_UsageRender | DkImageFlags_HwCompression;
++	layout_maker.format = DkImageFormat_Z24S8;
++	layout_maker.dimensions[0] = width;
++	layout_maker.dimensions[1] = height;
++	dkImageLayoutInitialize(&depth_layout, &layout_maker);
++
++	size  = dkImageLayoutGetSize(&depth_layout);
++	align = dkImageLayoutGetAlignment(&depth_layout);
++	addr = aligned_alloc(align, size);
++	assert(addr);
++
++	LOG("Shadow size: 0x%llx, align: 0x%x, addr: %p", size, align, addr);
++
++	DkMemBlockMaker memblock_maker;
++	dkMemBlockMakerDefaults(&memblock_maker, g_dk_device, size);
++	memblock_maker.flags = DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image;
++	memblock_maker.storage = addr;
++	depth_memblock = dkMemBlockCreate(&memblock_maker);
++	assert(depth_memblock);
++
++	dkImageInitialize(&depth_image, &depth_layout, depth_memblock, 0);
++	dkImageViewDefaults(&depth_view, &depth_image);
++}
++
+ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
+ 		     const SceGxmRenderTarget *renderTarget, const SceGxmValidRegion *validRegion,
+ 		     SceGxmSyncObject *vertexSyncObject, SceGxmSyncObject *fragmentSyncObject,
+@@ -1006,12 +1052,12 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
+ 		if (!depth_stencil_surface_block)
+ 			return SCE_GXM_ERROR_INVALID_VALUE;
+ 
+-		dk_image_view_for_gxm_depth_stencil_surface(&depth_stencil_surface_image,
++		/*dk_image_view_for_gxm_depth_stencil_surface(&depth_stencil_surface_image,
+ 							    &depth_stencil_surface_view,
+ 							    depth_stencil_surface_block,
+ 							    renderTarget->params.width,
+ 							    renderTarget->params.height,
+-							    depthStencil);
++							    depthStencil);*/
+ 	}
+ 
+ 	LOG("sceGxmBeginScene to renderTarget %p, fragmentSyncObject: %p, "
+@@ -1024,10 +1070,12 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
+ 	dk_image_view_for_gxm_color_surface(&color_surface_image, &color_surface_view,
+ 					    color_surface_block, color_surface_inner);
+ 
++	ensure_shadow_depth_stencil_buffer(context, renderTarget->params.width, renderTarget->params.height);
++
+ 	dkCmdBufClear(context->cmdbuf);
+ 
+ 	dkCmdBufBindRenderTarget(context->cmdbuf, &color_surface_view,
+-				 depthStencil ? &depth_stencil_surface_view : NULL);
++				 &depth_view);
+ 
+ 	dkCmdBufSetViewports(context->cmdbuf, 0, &viewport, 1);
+ 	dkCmdBufSetScissors(context->cmdbuf, 0, &scissor, 1);
+@@ -1035,16 +1083,17 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
+ 	dkCmdBufBindColorState(context->cmdbuf, &context->color_state);
+ 	set_vita3k_gxm_uniform_blocks(context, &viewport);
+ 
+-	context->vertex_rb.head = 0;
+-	context->fragment_rb.head = 0;
+-
+ 	/* Wait until the framebuffer is swapped out before writing to it */
+ 	if (fragmentSyncObject)
+ 		dkCmdBufWaitFence(context->cmdbuf, &fragmentSyncObject->fence);
+ 
+-	if (depthStencil)
+-		dkCmdBufClearDepthStencil(context->cmdbuf, true, 1.0f, 0xFF, 0);
++	/* TODO: Use a different depth/stencil buffer for each framebuffer */
++	dkCmdBufClearDepthStencil(context->cmdbuf, true, 1.0f, 0xFF, 0);
+ 
++	context->vertex_rb.head = 0;
++	context->fragment_rb.head = 0;
++	/* Set everything as dirty so that the first draw call sets all the state */
++	context->dirty.raw = ~(uint32_t)0;
+ 	context->in_scene = true;
+ 
+ 	return 0;

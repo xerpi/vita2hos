@@ -137,6 +137,8 @@ static void presenter_thread_func(void *arg)
 		if (!g_vita_conf_fb.base)
 			goto next_frame_sleep;
 
+		goto next_frame_sleep;
+
 		base = g_vita_conf_fb.base;
 		width = g_vita_conf_fb.width;
 		height = g_vita_conf_fb.height;
@@ -192,6 +194,8 @@ static void presenter_thread_func(void *arg)
 
 next_frame_sleep:
 		svcSleepThread(16666667ull);
+		// fake vblank
+		condvarWakeAll(&g_vblank_condvar);
 	}
 
 	threadExit();
