@@ -1,0 +1,267 @@
+diff --git a/Makefile b/Makefile
+index 8b6f7b8..25ba0bb 100644
+--- a/Makefile
++++ b/Makefile
+@@ -62,7 +62,7 @@ DEFINES		:= -DVITA2HOS_MAJOR=\"$(VITA2HOS_MAJOR)\" -DVITA2HOS_MINOR=\"$(VITA2HOS
+ #---------------------------------------------------------------------------------
+ # options for code generation
+ #---------------------------------------------------------------------------------
+-ARCH	:=	-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIC -nostartfiles
++ARCH	:=	-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIC
+ 
+ CFLAGS	:=	-g3 -Wall -O2 -ffunction-sections \
+ 			$(ARCH) $(DEFINES)
+diff --git a/source/modules/SceGxm.c b/source/modules/SceGxm.c
+index 8b1bf81..54f8ffb 100644
+--- a/source/modules/SceGxm.c
++++ b/source/modules/SceGxm.c
+@@ -15,7 +15,7 @@
+ 
+ #include "basic_vsh_dksh.h"
+ #include "color_fsh_dksh.h"
+-
++#include <assert.h>
+ #define SCE_GXM_NOTIFICATION_COUNT	512
+ 
+ #define MAX_GXM_MAPPED_MEMORY_BLOCKS	256
+@@ -366,6 +366,55 @@ int sceGxmTerminate()
+ 	return 0;
+ }
+ 
++static bool created = false;
++static DkImageLayout depth_layout;
++static DkImage depth_image;
++static DkImageView depth_view;
++static DkMemBlock depth_memblock;
++
++static void ensure_shadow_depth_stencil_buffer(SceGxmContext *context, uint32_t width, uint32_t height)
++{
++	uint64_t size;
++	uint32_t align;
++	void *addr;
++	DkImageLayoutMaker layout_maker;
++
++	LOG("ensure_shadow_depth_stencil_buffer 1");
++
++	if (created)
++		return;
++
++	assert(width > 0 && height > 0);
++
++	LOG("  creating shadow depth/stencil buffer!");
++	dkImageLayoutMakerDefaults(&layout_maker, g_dk_device);
++	layout_maker.flags = DkImageFlags_UsageRender | DkImageFlags_HwCompression;
++	layout_maker.format = DkImageFormat_Z24S8;
++	layout_maker.dimensions[0] = width;
++	layout_maker.dimensions[1] = height;
++	dkImageLayoutInitialize(&depth_layout, &layout_maker);
++
++	size  = dkImageLayoutGetSize(&depth_layout);
++	align = dkImageLayoutGetAlignment(&depth_layout);
++	addr = aligned_alloc(align, size);
++	assert(addr);
++
++	LOG("Shadow size: 0x%llx, align: 0x%x, addr: %p", size, align, addr);
++
++	DkMemBlockMaker memblock_maker;
++	dkMemBlockMakerDefaults(&memblock_maker, g_dk_device, size);
++	memblock_maker.flags = DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image;
++	memblock_maker.storage = addr;
++	depth_memblock = dkMemBlockCreate(&memblock_maker);
++	assert(depth_memblock);
++
++	dkImageInitialize(&depth_image, &depth_layout, depth_memblock, 0);
++	dkImageViewDefaults(&depth_view, &depth_image);
++
++	created = true;
++}
++
++
+ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **context)
+ {
+ 	DkCmdBufMaker cmdbuf_maker;
+@@ -405,6 +454,8 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
+ 	ctx->fragment_ringbuf.tail = 0;
+ 	ctx->fragment_ringbuf.size = params->fragmentRingBufferMemSize;
+ 
++	ensure_shadow_depth_stencil_buffer(ctx, 960, 544);
++
+ 	*context = ctx;
+ 
+ 	return 0;
+@@ -698,23 +749,61 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
+ 	dk_image_view_for_gxm_color_surface(&color_surface_image, &color_surface_view,
+ 					    color_surface_block, color_surface_inner);
+ 
+-	dkRasterizerStateDefaults(&rasterizer_state);
+-	dkColorStateDefaults(&color_state);
+-	dkColorWriteStateDefaults(&color_write_state);
+ 
+-	dkCmdBufClear(context->cmdbuf);
++	//dkQueueWaitIdle(g_render_queue);
+ 
+-	dkCmdBufBindRenderTarget(context->cmdbuf, &color_surface_view, NULL);
++	//dkCmdBufClear(context->cmdbuf);
++
++	dkCmdBufBindRenderTarget(context->cmdbuf, &color_surface_view, &depth_view);
+ 
+ 	dkCmdBufSetViewports(context->cmdbuf, 0, &viewport, 1);
+ 	dkCmdBufSetScissors(context->cmdbuf, 0, &scissor, 1);
++
++	// cmdbuf.clearDepthStencil(true, 1.0f, 0xFF, 0);
++
++	dkRasterizerStateDefaults(&rasterizer_state);
++	dkColorStateDefaults(&color_state);
++	dkColorWriteStateDefaults(&color_write_state);
+ 	dkCmdBufBindShaders(context->cmdbuf, DkStageFlag_GraphicsMask, shaders, ARRAY_SIZE(shaders));
+ 	dkCmdBufBindRasterizerState(context->cmdbuf, &rasterizer_state);
+ 	dkCmdBufBindColorState(context->cmdbuf, &color_state);
+ 	dkCmdBufBindColorWriteState(context->cmdbuf, &color_write_state);
+ 
+-	if (fragmentSyncObject)
+-		dkCmdBufWaitFence(context->cmdbuf, &fragmentSyncObject->fence);
++	struct basic_vertex {
++		float x, y, z;
++		float r, g, b;
++	};
++
++	struct basic_vertex *triangle_mesh_data = dkMemBlockGetCpuAddr(context->vertex_ringbuf.memblock);
++	triangle_mesh_data[0] = (struct basic_vertex){
++		-1.0f, 0.0f, 1.0f,
++		1.0f, 0.0f, 0.0f,
++	};
++	triangle_mesh_data[1] = (struct basic_vertex){
++		-0.75f, -0.75f, 1.0f,
++		0.0f, 1.0f, 0.0f,
++	};
++	triangle_mesh_data[2] = (struct basic_vertex){
++		0.75f, -0.75f, 1.0f,
++		0.0f, 0.0f, 1.0f,
++	};
++	static const DkVtxAttribState VertexAttribState[] =
++	{
++		{ 0, 0, 0,                    DkVtxAttribSize_3x32, DkVtxAttribType_Float, 0 },
++		{ 0, 0, 3 * sizeof(float),    DkVtxAttribSize_3x32, DkVtxAttribType_Float, 0 },
++	};
++
++	static const DkVtxBufferState VertexBufferState[] =
++	{
++		{ sizeof(Vertex), 0 },
++	};
++
++        dkCmdBufBindVtxBuffer(context->cmdbuf, 0, dkMemBlockGetGpuAddr(context->vertex_ringbuf.memblock), 3 * sizeof(struct basic_vertex));
++        dkCmdBufBindVtxAttribState(context->cmdbuf, VertexAttribState, 2);
++        dkCmdBufBindVtxBufferState(context->cmdbuf, VertexBufferState ,1);
++
++        // Draw the cube
++        dkCmdBufDraw(context->cmdbuf, DkPrimitive_Triangles, 3, 1, 0, 0);
+ 
+ 	context->vertex_ringbuf.head = 0;
+ 	context->fragment_ringbuf.head = 0;
+@@ -735,29 +824,19 @@ int sceGxmEndScene(SceGxmContext *context, const SceGxmNotification *vertexNotif
+ 	if (!context->scene.valid)
+ 		return SCE_GXM_ERROR_NOT_WITHIN_SCENE;
+ 
+-	if (vertexNotification) {
+-		offset = (uintptr_t)vertexNotification->address -
+-			 (uintptr_t)dkMemBlockGetCpuAddr(g_notification_region_memblock);
+-		assert(offset < SCE_GXM_NOTIFICATION_COUNT * sizeof(uint32_t));
++	// Fragment barrier, to make sure we finish previous work before discarding the depth buffer
++	dkCmdBufBarrier(context->cmdbuf, DkBarrier_Fragments, 0);
+ 
+-		dkVariableInitialize(&variable, g_notification_region_memblock, offset);
+-		dkCmdBufSignalVariable(context->cmdbuf, &variable, DkVarOp_Set,
+-				       vertexNotification->value, DkPipelinePos_Rasterizer);
+-	}
+-
+-	if (fragmentNotification) {
+-		offset = (uintptr_t)fragmentNotification->address -
+-			 (uintptr_t)dkMemBlockGetCpuAddr(g_notification_region_memblock);
+-		assert(offset < SCE_GXM_NOTIFICATION_COUNT * sizeof(uint32_t));
+-
+-		dkVariableInitialize(&variable, g_notification_region_memblock, offset);
+-		dkCmdBufSignalVariable(context->cmdbuf, &variable, DkVarOp_Set,
+-				       fragmentNotification->value, DkPipelinePos_Bottom);
+-	}
++	// Discard the depth buffer since we don't need it anymore
++	dkCmdBufDiscardDepthStencil(context->cmdbuf);
+ 
+ 	cmd_list = dkCmdBufFinishList(context->cmdbuf);
+ 	dkQueueSubmitCommands(g_render_queue, cmd_list);
+ 
++	dkQueueWaitIdle(g_render_queue);
++
++	svcSleepThread(100 * 1000 * 1000ull);
++
+ 	context->scene.valid = false;
+ 
+ 	return 0;
+@@ -853,19 +932,22 @@ int sceGxmSetVertexStream(SceGxmContext *context, unsigned int streamIndex, cons
+ 	DkVtxAttribState vertex_attrib_state[SCE_GXM_MAX_VERTEX_ATTRIBUTES];
+ 	DkVtxBufferState vertex_buffer_state;
+ 	VitaMemBlockInfo *stream_block;
+-	uint32_t stream_offset;
++	ptrdiff_t stream_offset;
+ 	SceGxmVertexAttribute *attributes = context->vertex_program->attributes;
+ 	uint32_t attribute_count = context->vertex_program->attributeCount;
+ 	SceGxmVertexStream *streams = context->vertex_program->streams;
+ 
++	return 0;
++
+ 	stream_block = SceSysmem_get_vita_memblock_info_for_addr(streamData);
+ 	if (!stream_block)
+ 		return SCE_GXM_ERROR_INVALID_VALUE;
+ 
+ 	stream_offset = (uintptr_t)streamData - (uintptr_t)stream_block->base;
++	assert(stream_offset >= 0);
+ 	dkCmdBufBindVtxBuffer(context->cmdbuf, streamIndex,
+-			      dkMemBlockGetGpuAddr(stream_block->dk_memblock) + stream_offset,
+-			      stream_block->size - stream_offset);
++			      dkMemBlockGetGpuAddr(stream_block->dk_memblock),
++			      dkMemBlockGetSize(stream_block->dk_memblock));
+ 
+ 	memset(vertex_attrib_state, 0, attribute_count * sizeof(DkVtxAttribState));
+ 	for (uint32_t i = 0; i < attribute_count; i++) {
+@@ -899,6 +981,8 @@ int sceGxmReserveVertexDefaultUniformBuffer(SceGxmContext *context, void **unifo
+ 	else if (!context->vertex_program)
+ 		return SCE_GXM_ERROR_NULL_PROGRAM;
+ 
++	return 0;
++
+ 	program = context->vertex_program->programId->programHeader;
+ 
+ 	default_uniform_buffer_count = program->default_uniform_buffer_count;
+@@ -927,6 +1011,8 @@ int sceGxmReserveFragmentDefaultUniformBuffer(SceGxmContext *context, void **uni
+ 	uint32_t uniform_buf_size;
+ 	const SceGxmProgram *program;
+ 
++	return 0;
++
+ 	if (!context->scene.valid)
+ 		return SCE_GXM_ERROR_NOT_WITHIN_SCENE;
+ 	else if (!context->fragment_program)
+@@ -987,7 +1073,9 @@ int sceGxmDraw(SceGxmContext *context, SceGxmPrimitiveType primType, SceGxmIndex
+ 	       const void *indexData, unsigned int indexCount)
+ {
+ 	VitaMemBlockInfo *index_block;
+-	uint32_t index_offset;
++	ptrdiff_t index_offset;
++
++	return 0;
+ 
+ 	LOG("sceGxmDraw: primType: 0x%x, indexCount: %d", primType, indexCount);
+ 
+@@ -996,9 +1084,11 @@ int sceGxmDraw(SceGxmContext *context, SceGxmPrimitiveType primType, SceGxmIndex
+ 		return SCE_GXM_ERROR_INVALID_VALUE;
+ 
+ 	index_offset = (uintptr_t)indexData - (uintptr_t)index_block->base;
++	assert(index_offset >= 0);
++	LOG("  index offset: 0x%x", index_offset);
+ 	dkCmdBufBindIdxBuffer(context->cmdbuf, gxm_to_dk_idx_format(indexType),
+-			      dkMemBlockGetGpuAddr(index_block->dk_memblock) + index_offset);
+-	dkCmdBufDrawIndexed(context->cmdbuf, gxm_to_dk_primitive(primType), indexCount, 1, 0, 0, 0);
++			      dkMemBlockGetGpuAddr(index_block->dk_memblock));
++	dkCmdBufDrawIndexed(context->cmdbuf, gxm_to_dk_primitive(primType), indexCount, 1, 0, index_offset, 0);
+ 
+ 	return 0;
+ }
