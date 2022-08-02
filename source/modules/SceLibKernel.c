@@ -264,11 +264,11 @@ int sceIoDread(SceUID fd, SceIoDirent *dirent)
 		return SCE_ERROR_ERRNO_EBADF;
 
 	if ((statbuf.st_mode & S_IFMT) == S_IFDIR) {
-		st_mode = SCE_S_IFDIR | SCE_S_IRWXU | SCE_S_IRWXG | SCE_S_IRWXO;
+		st_mode = SCE_S_IFDIR | SCE_S_IRWXU | SCE_S_IRWXG | SCE_S_IRWXS;
 		st_attr = SCE_SO_IFDIR;
 	} else {
 		st_mode = SCE_S_IFREG | SCE_S_IRUSR | SCE_S_IWUSR | SCE_S_IRGRP |
-			  SCE_S_IWGRP | SCE_S_IROTH | SCE_S_IWOTH;
+			  SCE_S_IWGRP | SCE_S_IRSYS | SCE_S_IWSYS;
 		st_attr = SCE_SO_IFREG;
 	}
 
