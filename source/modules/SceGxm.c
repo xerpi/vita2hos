@@ -25,84 +25,6 @@
 
 #define MAX_GXM_MAPPED_MEMORY_BLOCKS	256
 
-typedef struct SceGxmContext {
-	SceGxmContextParams params;
-	DkMemBlock cmdbuf_memblock;
-	DkCmdBuf cmdbuf;
-	DkMemBlock vertex_rb_memblock;
-	DkMemBlock fragment_rb_memblock;
-	DkMemBlock gxm_vert_unif_block_memblock;
-	DkMemBlock gxm_frag_unif_block_memblock;
-	/* State */
-	struct {
-		struct {
-			uint32_t head;
-			uint32_t tail;
-			uint32_t size;
-		} vertex_rb, fragment_rb;
-		const SceGxmVertexProgram *vertex_program;
-		const SceGxmFragmentProgram *fragment_program;
-		bool in_scene;
-		bool two_sided_mode;
-		DkRasterizerState rasterizer_state;
-		DkColorState color_state;
-		DkColorWriteState color_write_state;
-		DkDepthStencilState depth_stencil_state;
-		struct {
-			uint8_t ref;
-			uint8_t compare_mask;
-			uint8_t write_mask;
-		} front_stencil_state, back_stencil_state;
-		/* Dirty state tracking */
-		union {
-			struct {
-				uint32_t shaders : 1;
-				uint32_t depth_stencil : 1;
-				uint32_t front_stencil : 1;
-				uint32_t back_stencil : 1;
-				uint32_t color_write : 1;
-			} bit;
-			uint32_t raw;
-		} dirty;
-	};
-} SceGxmContext;
-static_assert(sizeof(SceGxmContext) <= SCE_GXM_MINIMUM_CONTEXT_HOST_MEM_SIZE, "Oversized SceGxmContext");
-
-typedef struct SceGxmSyncObject {
-	DkFence fence;
-} SceGxmSyncObject;
-
-typedef struct SceGxmRegisteredProgram {
-	const SceGxmProgram *programHeader;
-} SceGxmRegisteredProgram;
-
-typedef struct SceGxmShaderPatcher {
-	SceGxmShaderPatcherParams params;
-	SceGxmShaderPatcherId *registered_programs;
-	uint32_t registered_count;
-} SceGxmShaderPatcher;
-
-typedef struct SceGxmVertexProgram {
-	SceGxmShaderPatcherId programId;
-	SceGxmVertexAttribute *attributes;
-	unsigned int attributeCount;
-	SceGxmVertexStream *streams;
-	unsigned int streamCount;
-	DkShader dk_shader;
-} SceGxmVertexProgram;
-
-typedef struct SceGxmFragmentProgram {
-	SceGxmShaderPatcherId programId;
-	SceGxmOutputRegisterFormat outputFormat;
-	SceGxmMultisampleMode multisampleMode;
-	SceGxmBlendInfo blendInfo;
-	DkShader dk_shader;
-} SceGxmFragmentProgram;
-
-typedef struct SceGxmRenderTarget {
-	SceGxmRenderTargetParams params;
-} SceGxmRenderTarget;
-
 typedef struct {
 	// Control Word 0
 	uint32_t unk0 : 3;
@@ -164,6 +86,87 @@ typedef struct {
 	SceGxmTexture backgroundTex;
 } SceGxmColorSurfaceInner;
 static_assert(sizeof(SceGxmColorSurfaceInner) == sizeof(SceGxmColorSurface), "Incorrect size");
+
+typedef struct SceGxmContext {
+	SceGxmContextParams params;
+	DkMemBlock cmdbuf_memblock;
+	DkCmdBuf cmdbuf;
+	DkMemBlock vertex_rb_memblock;
+	DkMemBlock fragment_rb_memblock;
+	DkMemBlock gxm_vert_unif_block_memblock;
+	DkMemBlock gxm_frag_unif_block_memblock;
+	DkMemBlock fragment_tex_descriptor_set_memblock;
+	/* State */
+	struct {
+		struct {
+			uint32_t head;
+			uint32_t tail;
+			uint32_t size;
+		} vertex_rb, fragment_rb;
+		const SceGxmVertexProgram *vertex_program;
+		const SceGxmFragmentProgram *fragment_program;
+		bool in_scene;
+		bool two_sided_mode;
+		DkRasterizerState rasterizer_state;
+		DkColorState color_state;
+		DkColorWriteState color_write_state;
+		DkDepthStencilState depth_stencil_state;
+		struct {
+			uint8_t ref;
+			uint8_t compare_mask;
+			uint8_t write_mask;
+		} front_stencil_state, back_stencil_state;
+		SceGxmTextureInner fragment_textures[SCE_GXM_MAX_TEXTURE_UNITS];
+		/* Dirty state tracking */
+		union {
+			struct {
+				uint32_t shaders : 1;
+				uint32_t depth_stencil : 1;
+				uint32_t front_stencil : 1;
+				uint32_t back_stencil : 1;
+				uint32_t color_write : 1;
+				uint32_t fragment_textures : 1;
+			} bit;
+			uint32_t raw;
+		} dirty;
+	};
+} SceGxmContext;
+static_assert(sizeof(SceGxmContext) <= SCE_GXM_MINIMUM_CONTEXT_HOST_MEM_SIZE, "Oversized SceGxmContext");
+
+typedef struct SceGxmSyncObject {
+	DkFence fence;
+} SceGxmSyncObject;
+
+typedef struct SceGxmRegisteredProgram {
+	const SceGxmProgram *programHeader;
+} SceGxmRegisteredProgram;
+
+typedef struct SceGxmShaderPatcher {
+	SceGxmShaderPatcherParams params;
+	SceGxmShaderPatcherId *registered_programs;
+	uint32_t registered_count;
+} SceGxmShaderPatcher;
+
+typedef struct SceGxmVertexProgram {
+	SceGxmShaderPatcherId programId;
+	SceGxmVertexAttribute *attributes;
+	unsigned int attributeCount;
+	SceGxmVertexStream *streams;
+	unsigned int streamCount;
+	DkShader dk_shader;
+} SceGxmVertexProgram;
+
+typedef struct SceGxmFragmentProgram {
+	SceGxmShaderPatcherId programId;
+	SceGxmOutputRegisterFormat outputFormat;
+	SceGxmMultisampleMode multisampleMode;
+	SceGxmBlendInfo blendInfo;
+	DkShader dk_shader;
+} SceGxmFragmentProgram;
+
+typedef struct SceGxmRenderTarget {
+	SceGxmRenderTargetParams params;
+} SceGxmRenderTarget;
 
 typedef struct SceGxmProgram {
 	uint32_t magic; // should be "GXP\0"
@@ -452,6 +455,10 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 		ALIGN(sizeof(struct GXMRenderFragUniformBlock), DK_UNIFORM_BUF_ALIGNMENT),
 		DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached);
 
+	ctx->fragment_tex_descriptor_set_memblock = dk_alloc_memblock(g_dk_device,
+		(sizeof(struct DkImageDescriptor) + sizeof(DkSamplerDescriptor)) * SCE_GXM_MAX_TEXTURE_UNITS,
+		DkMemBlockFlags_GpuCached);
+
 	/* Init default state */
 	ctx->vertex_rb.head = 0;
 	ctx->vertex_rb.tail = 0;
@@ -508,6 +515,7 @@ int sceGxmDestroyContext(SceGxmContext *context)
 	dkQueueWaitIdle(g_render_queue);
 	dkMemBlockDestroy(context->gxm_vert_unif_block_memblock);
 	dkMemBlockDestroy(context->gxm_frag_unif_block_memblock);
+	dkMemBlockDestroy(context->fragment_tex_descriptor_set_memblock);
 	dkCmdBufDestroy(context->cmdbuf);
 
 	return 0;
@@ -1210,6 +1218,13 @@ void sceGxmSetFragmentProgram(SceGxmContext *context, const SceGxmFragmentProgra
 	context->dirty.bit.shaders = true;
 }
 
+int sceGxmSetFragmentTexture(SceGxmContext *context, unsigned int textureIndex, const SceGxmTexture *texture)
+{
+	context->fragment_textures[textureIndex] = *(SceGxmTextureInner *)texture;
+	context->dirty.bit.fragment_textures = true;
+	return 0;
+}
+
 int sceGxmSetVertexStream(SceGxmContext *context, unsigned int streamIndex, const void *streamData)
 {
 	VitaMemBlockInfo *stream_block;
@@ -1305,6 +1320,50 @@ int sceGxmSetUniformDataF(void *uniformBuffer, const SceGxmProgramParameter *par
 	return 0;
 }
 
+static int init_texture_base(SceGxmTextureInner *texture, const void *data, SceGxmTextureFormat tex_format,
+			     uint32_t width, uint32_t height, uint32_t mipCount, SceGxmTextureType texture_type)
+{
+	if (width > 4096 || height > 4096 || mipCount > 13)
+		return SCE_GXM_ERROR_INVALID_VALUE;
+
+	texture->mip_count = MIN2(15, mipCount - 1);
+	texture->format0 = (tex_format & 0x80000000) >> 31;
+	texture->lod_bias = 31;
+
+	if ((texture_type == SCE_GXM_TEXTURE_SWIZZLED) || (texture_type == SCE_GXM_TEXTURE_CUBE)) {
+		texture->uaddr_mode = texture->vaddr_mode = SCE_GXM_TEXTURE_ADDR_MIRROR;
+		texture->height_base2 = highest_set_bit(height);
+		texture->width_base2 = highest_set_bit(width);
+	} else {
+		texture->uaddr_mode = texture->vaddr_mode = SCE_GXM_TEXTURE_ADDR_CLAMP;
+		texture->height = height - 1;
+		texture->width = width - 1;
+	}
+
+	texture->base_format = (tex_format & 0x1F000000) >> 24;
+	texture->type = texture_type >> 29;
+	texture->data_addr = (uint32_t)data >> 2;
+	texture->swizzle_format = (tex_format & 0x7000) >> 12;
+	texture->normalize_mode = 1;
+	texture->min_filter = SCE_GXM_TEXTURE_FILTER_POINT;
+	texture->mag_filter = SCE_GXM_TEXTURE_FILTER_POINT;
+
+	return 0;
+}
+
+int sceGxmTextureInitLinear(SceGxmTexture *texture, const void *data,
+			    SceGxmTextureFormat texFormat,
+			    unsigned int width, unsigned int height,
+			    unsigned int mipCount)
+{
+	if (!texture)
+		return SCE_GXM_ERROR_INVALID_POINTER;
+
+	return init_texture_base((SceGxmTextureInner *)texture, data,
+				 texFormat, width, height, mipCount,
+				 SCE_GXM_TEXTURE_LINEAR);
+}
+
 const SceGxmProgramParameter *sceGxmProgramFindParameterByName(const SceGxmProgram *program, const char *name)
 {
 	const uint8_t *parameter_bytes;
@@ -1357,6 +1416,64 @@ static void context_flush_dirty_state(SceGxmContext *context)
 	if (context->dirty.bit.color_write) {
 		dkCmdBufBindColorWriteState(context->cmdbuf, &context->color_write_state);
 		context->dirty.bit.color_write = false;
+	}
+
+	if (context->dirty.bit.fragment_textures) {
+		struct {
+			DkImageDescriptor images[SCE_GXM_MAX_TEXTURE_UNITS];
+			DkSamplerDescriptor samplers[SCE_GXM_MAX_TEXTURE_UNITS];
+		} descriptors;
+
+		for (int i = 0; i < SCE_GXM_MAX_TEXTURE_UNITS; i++) {
+			if (context->fragment_textures[i].data_addr) {
+				VitaMemBlockInfo *tex_block;
+				uint32_t tex_offset;
+				void *data = (void *)(context->fragment_textures[i].data_addr << 2);
+
+				tex_block = SceSysmem_get_vita_memblock_info_for_addr(data);
+				if (!tex_block)
+					continue;
+
+				tex_offset = (uintptr_t)data - (uintptr_t)tex_block->base;
+
+				DkSampler sampler;
+				dkSamplerDefaults(&sampler);
+				sampler.wrapMode[0] = DkWrapMode_ClampToEdge;
+				sampler.wrapMode[1] = DkWrapMode_ClampToEdge;
+				sampler.minFilter = DkFilter_Nearest;
+				sampler.magFilter = DkFilter_Nearest;
+				dkSamplerDescriptorInitialize(&descriptors.samplers[i], &sampler);
+
+				DkImageLayoutMaker image_layout_maker;
+				dkImageLayoutMakerDefaults(&image_layout_maker, g_dk_device);
+				image_layout_maker.flags = DkImageFlags_PitchLinear;
+				image_layout_maker.type = DkImageType_2D;
+				image_layout_maker.format = DkImageFormat_RGBA8_Unorm;
+				image_layout_maker.dimensions[0] = context->fragment_textures[i].width + 1;
+				image_layout_maker.dimensions[1] = context->fragment_textures[i].height + 1;
+				image_layout_maker.pitchStride = (context->fragment_textures[i].width + 1) * 4;
+
+				DkImageLayout image_layout;
+				dkImageLayoutInitialize(&image_layout, &image_layout_maker);
+				DkImage image;
+				dkImageInitialize(&image, &image_layout, tex_block->dk_memblock, tex_offset);
+				DkImageView image_view;
+				dkImageViewDefaults(&image_view, &image);
+
+				dkImageDescriptorInitialize(&descriptors.images[i], &image_view, false, false);
+
+				dkCmdBufBindTexture(context->cmdbuf, DkStage_Fragment, i, dkMakeTextureHandle(i, i));
+			}
+
+			DkGpuAddr desc = dkMemBlockGetGpuAddr(context->fragment_tex_descriptor_set_memblock);
+			dkCmdBufPushData(context->cmdbuf, desc, &descriptors, sizeof(descriptors));
+			dkCmdBufBindImageDescriptorSet(context->cmdbuf, desc, SCE_GXM_MAX_TEXTURE_UNITS);
+			dkCmdBufBindSamplerDescriptorSet(context->cmdbuf,
+							 desc + SCE_GXM_MAX_TEXTURE_UNITS * sizeof(DkImageDescriptor),
+							 SCE_GXM_MAX_TEXTURE_UNITS);
+		}
+
+		context->dirty.bit.fragment_textures = false;
 	}
 }
 
@@ -1464,10 +1581,12 @@ void SceGxm_register(void)
 		{0xB98C5B0D, sceGxmDisplayQueueFinish},
 		{0x31FF8ABD, sceGxmSetVertexProgram},
 		{0xAD2F48D9, sceGxmSetFragmentProgram},
+		{0x29C34DF5, sceGxmSetFragmentTexture},
 		{0x895DF2E9, sceGxmSetVertexStream},
 		{0x97118913, sceGxmReserveVertexDefaultUniformBuffer},
 		{0x7B1FABB6, sceGxmReserveFragmentDefaultUniformBuffer},
 		{0x65DD0C84, sceGxmSetUniformDataF},
+		{0x4811AECB, sceGxmTextureInitLinear},
 		{0x277794C4, sceGxmProgramFindParameterByName},
 		{0xBC059AFC, sceGxmDraw},
 		{0xC61E34FC, sceGxmMapMemory},

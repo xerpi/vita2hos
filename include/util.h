@@ -33,6 +33,16 @@ static inline uint32_t next_pow2(uint32_t x)
 	return val;
 }
 
+static inline uint32_t highest_set_bit(int32_t num)
+{
+	for (int i = 31; i >= 0; i--) {
+		if (num & (1 << i))
+			return i;
+	}
+
+	return 0;
+};
+
 int util_load_file(const char *filename, void **data, uint32_t *size);
 int util_write_binary_file(const char *filename, const void *data, uint32_t size);
 int util_write_text_file(const char *filename, const char *data);
