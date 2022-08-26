@@ -6,6 +6,7 @@
 #include <psp2/gxm.h>
 #include <deko3d.h>
 
+#define SCE_GXM_COLOR_BASE_FORMAT_MASK 0xF1800000U
 #define SCE_GXM_TEXTURE_BASE_FORMAT_MASK 0x9f000000U
 
 static inline uint32_t display_pixelformat_bytes_per_pixel(SceDisplayPixelFormat format)
@@ -41,12 +42,12 @@ static inline uint32_t gxm_color_surface_type_to_dk_image_flags(SceGxmColorSurfa
 	}
 }
 
-static inline uint32_t gxm_color_format_bytes_per_pixel(SceGxmColorFormat format)
+static inline size_t gxm_color_base_format_bits_per_pixel(SceGxmColorBaseFormat base_format)
 {
-	switch (format & SCE_GXM_TEXTURE_BASE_FORMAT_MASK) {
+	switch (base_format) {
 	case SCE_GXM_COLOR_BASE_FORMAT_U8:
 	case SCE_GXM_COLOR_BASE_FORMAT_S8:
-		return 1;
+		return 8;
 	case SCE_GXM_COLOR_BASE_FORMAT_U5U6U5:
 	case SCE_GXM_COLOR_BASE_FORMAT_U1U5U5U5:
 	case SCE_GXM_COLOR_BASE_FORMAT_U4U4U4U4:
@@ -57,9 +58,9 @@ static inline uint32_t gxm_color_format_bytes_per_pixel(SceGxmColorFormat format
 	case SCE_GXM_COLOR_BASE_FORMAT_S5S5U6:
 	case SCE_GXM_COLOR_BASE_FORMAT_U8U8:
 	case SCE_GXM_COLOR_BASE_FORMAT_S8S8:
-		return 2;
+		return 16;
 	case SCE_GXM_COLOR_BASE_FORMAT_U8U8U8:
-		return 3;
+		return 24;
 	case SCE_GXM_COLOR_BASE_FORMAT_U8U8U8U8:
 	case SCE_GXM_COLOR_BASE_FORMAT_F16F16:
 	case SCE_GXM_COLOR_BASE_FORMAT_F32:
@@ -71,18 +72,109 @@ static inline uint32_t gxm_color_format_bytes_per_pixel(SceGxmColorFormat format
 	case SCE_GXM_COLOR_BASE_FORMAT_F11F11F10:
 	case SCE_GXM_COLOR_BASE_FORMAT_SE5M9M9M9:
 	case SCE_GXM_COLOR_BASE_FORMAT_U2F10F10F10:
-		return 4;
+		return 32;
 	case SCE_GXM_COLOR_BASE_FORMAT_F16F16F16F16:
 	case SCE_GXM_COLOR_BASE_FORMAT_F32F32:
-		return 8;
+		return 64;
 	default:
 		assert(0);
 	}
 }
 
+static inline size_t gxm_color_base_format_bytes_per_pixel(SceGxmColorBaseFormat base_format)
+{
+	return gxm_color_base_format_bits_per_pixel(base_format) >> 3;
+}
+
+static inline size_t gxm_color_format_bytes_per_pixel(SceGxmColorFormat format)
+{
+	return gxm_color_base_format_bytes_per_pixel(format & SCE_GXM_COLOR_BASE_FORMAT_MASK);
+}
+
+static inline size_t gxm_texture_base_format_bytes_per_pixel(SceGxmTextureBaseFormat base_format)
+{
+	switch (base_format) {
+	case SCE_GXM_TEXTURE_BASE_FORMAT_U8:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_S8:
+		return 8;
+	case SCE_GXM_TEXTURE_BASE_FORMAT_U4U4U4U4:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_U8U3U3U2:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_U1U5U5U5:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_U5U6U5:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_S5S5U6:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_U8U8:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_S8S8:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_U16:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_S16:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_F16:
+		return 16;
+	case SCE_GXM_TEXTURE_BASE_FORMAT_U8U8U8U8:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_S8S8S8S8:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_U2U10U10U10:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_U16U16:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_S16S16:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_F16F16:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_F32:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_F32M:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_X8S8S8U8:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_X8U24:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_U32:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_S32:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_SE5M9M9M9:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_F11F11F10:
+		return 32;
+	case SCE_GXM_TEXTURE_BASE_FORMAT_F16F16F16F16:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_U16U16U16U16:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_S16S16S16S16:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_F32F32:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_U32U32:
+		return 64;
+	case SCE_GXM_TEXTURE_BASE_FORMAT_PVRT2BPP:
+		return 2;
+	case SCE_GXM_TEXTURE_BASE_FORMAT_PVRT4BPP:
+		return 4;
+	case SCE_GXM_TEXTURE_BASE_FORMAT_PVRTII2BPP:
+		return 2;
+	case SCE_GXM_TEXTURE_BASE_FORMAT_PVRTII4BPP:
+		return 4;
+	case SCE_GXM_TEXTURE_BASE_FORMAT_UBC1:
+		return 4;
+	case SCE_GXM_TEXTURE_BASE_FORMAT_UBC2:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_UBC3:
+		return 8;
+	case SCE_GXM_TEXTURE_BASE_FORMAT_UBC4:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_SBC4:
+		return 4;
+	case SCE_GXM_TEXTURE_BASE_FORMAT_UBC5:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_SBC5:
+		return 8;
+	case SCE_GXM_TEXTURE_BASE_FORMAT_YUV420P2:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_YUV420P3:
+		return 12;
+	case SCE_GXM_TEXTURE_BASE_FORMAT_YUV422:
+		return 16;
+	case SCE_GXM_TEXTURE_BASE_FORMAT_P4:
+		return 4;
+	case SCE_GXM_TEXTURE_BASE_FORMAT_P8:
+		return 8;
+	case SCE_GXM_TEXTURE_BASE_FORMAT_U8U8U8:
+	case SCE_GXM_TEXTURE_BASE_FORMAT_S8S8S8:
+		return 24;
+	case SCE_GXM_TEXTURE_BASE_FORMAT_U2F10F10F10:
+		return 32;
+	default:
+		assert(0);
+	}
+}
+
+static inline size_t gxm_texture_format_bytes_per_pixel(SceGxmTextureFormat format)
+{
+	return gxm_texture_base_format_bytes_per_pixel(format & SCE_GXM_TEXTURE_BASE_FORMAT_MASK) >> 3;
+}
+
 static inline DkImageFormat gxm_color_format_to_dk_image_format(SceGxmColorFormat format)
 {
-	switch (format & SCE_GXM_TEXTURE_BASE_FORMAT_MASK) {
+	switch (format) {
 	case SCE_GXM_COLOR_FORMAT_U8U8U8U8_ABGR:
 		return DkImageFormat_RGBA8_Unorm;
 	default:
@@ -267,6 +359,40 @@ static inline DkStencilOp gxm_stencil_op_to_dk_stencil_op(SceGxmStencilOp op)
 		return DkStencilOp_IncrWrap;
 	case SCE_GXM_STENCIL_OP_DECR_WRAP:
 		return DkStencilOp_DecrWrap;
+	default:
+		assert(0);
+	}
+}
+
+static inline DkWrapMode gxm_texture_addr_mode_to_dk_wrap_mode(SceGxmTextureAddrMode mode)
+{
+	switch (mode) {
+	case SCE_GXM_TEXTURE_ADDR_REPEAT:
+		return DkWrapMode_Repeat;
+	case SCE_GXM_TEXTURE_ADDR_MIRROR:
+		return DkWrapMode_MirroredRepeat;
+	case SCE_GXM_TEXTURE_ADDR_CLAMP:
+		return DkWrapMode_Clamp;
+	case SCE_GXM_TEXTURE_ADDR_MIRROR_CLAMP:
+		return DkWrapMode_MirrorClamp;
+	case SCE_GXM_TEXTURE_ADDR_REPEAT_IGNORE_BORDER:
+		assert(0);
+	case SCE_GXM_TEXTURE_ADDR_CLAMP_FULL_BORDER:
+		return DkWrapMode_ClampToBorder;
+	case SCE_GXM_TEXTURE_ADDR_CLAMP_IGNORE_BORDER:
+	case SCE_GXM_TEXTURE_ADDR_CLAMP_HALF_BORDER:
+	default:
+		assert(0);
+	}
+}
+
+static inline DkFilter gxm_texture_filter_to_dk_filter(SceGxmTextureFilter filter)
+{
+	switch (filter) {
+	case SCE_GXM_TEXTURE_FILTER_POINT:
+		return DkFilter_Nearest;
+	case SCE_GXM_TEXTURE_FILTER_LINEAR:
+		return DkFilter_Linear;
 	default:
 		assert(0);
 	}

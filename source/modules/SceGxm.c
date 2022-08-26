@@ -310,6 +310,51 @@ static inline uint32_t gxm_parameter_type_size(SceGxmParameterType type)
 	}
 }
 
+static inline int gxm_texture_get_type(const SceGxmTextureInner *texture)
+{
+	return texture->type << 29;
+}
+
+static inline size_t gxm_texture_get_width(const SceGxmTextureInner *texture)
+{
+	if (gxm_texture_get_type(texture) != SCE_GXM_TEXTURE_SWIZZLED &&
+	    gxm_texture_get_type(texture) != SCE_GXM_TEXTURE_CUBE)
+		return texture->width + 1;
+	return 1ull << (texture->width_base2 & 0xF);
+}
+
+static inline size_t gxm_texture_get_height(const SceGxmTextureInner *texture)
+{
+	if (gxm_texture_get_type(texture) != SCE_GXM_TEXTURE_SWIZZLED &&
+	    gxm_texture_get_type(texture) != SCE_GXM_TEXTURE_CUBE)
+		return texture->height + 1;
+	return 1ull << (texture->height_base2 & 0xF);
+}
+
+static inline SceGxmTextureFormat gxm_texture_get_format(const SceGxmTextureInner *texture)
+{
+	return (SceGxmTextureFormat)(texture->base_format << 24 |
+				     texture->format0 << 31 |
+				     texture->swizzle_format << 12);
+}
+
+static inline SceGxmTextureBaseFormat gxm_texture_get_base_format(SceGxmTextureFormat src)
+{
+	return (SceGxmTextureBaseFormat)(src & SCE_GXM_TEXTURE_BASE_FORMAT_MASK);
+}
+
+static inline size_t gxm_texture_get_stride_in_bytes(const SceGxmTextureInner *texture)
+{
+	return ((texture->mip_filter | (texture->min_filter << 1) |
+	        (texture->mip_count << 3) | (texture->lod_bias << 7)) + 1) * 4;
+}
+
+static inline bool gxm_base_format_is_paletted_format(SceGxmTextureBaseFormat base_format)
+{
+	return base_format == SCE_GXM_TEXTURE_BASE_FORMAT_P8 ||
+	       base_format == SCE_GXM_TEXTURE_BASE_FORMAT_P4;
+}
+
 #if DUMP_SHADER_SPIRV
 static void dump_shader_spirv(const char *prefix, const uint32_t *spirv, uint32_t num_instr)
 {
@@ -1364,6 +1409,149 @@ int sceGxmTextureInitLinear(SceGxmTexture *texture, const void *data,
 				 SCE_GXM_TEXTURE_LINEAR);
 }
 
+void *sceGxmTextureGetData(const SceGxmTexture *texture)
+{
+	return (void *)(((SceGxmTextureInner *)texture)->data_addr << 2);
+}
+
+SceGxmTextureFormat sceGxmTextureGetFormat(const SceGxmTexture *texture)
+{
+	return gxm_texture_get_format((SceGxmTextureInner *)texture);
+}
+
+SceGxmTextureGammaMode sceGxmTextureGetGammaMode(const SceGxmTexture *texture)
+{
+	return ((SceGxmTextureInner *)texture)->gamma_mode << 27;
+}
+
+uint32_t sceGxmTextureGetHeight(const SceGxmTexture *texture)
+{
+	return gxm_texture_get_height((SceGxmTextureInner *)texture);
+}
+
+uint32_t sceGxmTextureGetLodBias(const SceGxmTexture *texture)
+{
+	SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
+
+	if (!texture)
+		return SCE_GXM_ERROR_INVALID_POINTER;
+
+	if (gxm_texture_get_type(inner) == SCE_GXM_TEXTURE_LINEAR_STRIDED)
+		return 0;
+
+	return inner->lod_bias;
+}
+
+uint32_t sceGxmTextureGetLodMin(const SceGxmTexture *texture)
+{
+	SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
+
+	if (!texture)
+		return SCE_GXM_ERROR_INVALID_POINTER;
+
+	if (gxm_texture_get_type(inner) == SCE_GXM_TEXTURE_LINEAR_STRIDED)
+		return 0;
+
+	return inner->lod_min0 | (inner->lod_min1 << 2);
+}
+
+SceGxmTextureFilter sceGxmTextureGetMagFilter(const SceGxmTexture *texture)
+{
+	return ((SceGxmTextureInner *)texture)->mag_filter;
+}
+
+SceGxmTextureFilter sceGxmTextureGetMinFilter(const SceGxmTexture *texture)
+{
+	SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
+
+	if (gxm_texture_get_type(inner) == SCE_GXM_TEXTURE_LINEAR_STRIDED)
+		return inner->mag_filter;
+	return inner->min_filter;
+}
+
+SceGxmTextureMipFilter sceGxmTextureGetMipFilter(const SceGxmTexture *texture)
+{
+	SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
+
+	if (gxm_texture_get_type(inner) == SCE_GXM_TEXTURE_LINEAR_STRIDED)
+		return SCE_GXM_TEXTURE_MIP_FILTER_DISABLED;
+	return inner->mip_filter ? SCE_GXM_TEXTURE_MIP_FILTER_ENABLED :
+				   SCE_GXM_TEXTURE_MIP_FILTER_DISABLED;
+}
+
+uint32_t sceGxmTextureGetMipmapCount(const SceGxmTexture *texture)
+{
+	SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
+
+	if (gxm_texture_get_type(inner) == SCE_GXM_TEXTURE_LINEAR_STRIDED)
+		return 0;
+	return (inner->mip_count + 1) & 0xf;
+}
+
+uint32_t sceGxmTextureGetMipmapCountUnsafe(const SceGxmTexture *texture)
+{
+	return (((SceGxmTextureInner *)texture)->mip_count + 1) & 0xf;
+}
+
+int sceGxmTextureGetNormalizeMode(const SceGxmTexture *texture)
+{
+	return ((SceGxmTextureInner *)texture)->normalize_mode << 31;
+}
+
+void *sceGxmTextureGetPalette(const SceGxmTexture *texture)
+{
+	SceGxmTextureBaseFormat base_format = gxm_texture_get_base_format(sceGxmTextureGetFormat(texture));
+
+	return gxm_base_format_is_paletted_format(base_format) ? (void *)(texture->palette_addr << 6) : NULL;
+}
+
+uint32_t sceGxmTextureGetStride(const SceGxmTexture *texture)
+{
+	SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
+
+	if (gxm_texture_get_type(inner) != SCE_GXM_TEXTURE_LINEAR_STRIDED)
+		return 0;
+	return gxm_texture_get_stride_in_bytes(inner);
+}
+
+SceGxmTextureType sceGxmTextureGetType(const SceGxmTexture *texture)
+{
+	return gxm_texture_get_type((SceGxmTextureInner *)texture);
+}
+
+SceGxmTextureAddrMode sceGxmTextureGetUAddrMode(const SceGxmTexture *texture)
+{
+	return ((SceGxmTextureInner *)texture)->uaddr_mode;
+}
+
+int sceGxmTextureGetUAddrModeSafe(const SceGxmTexture *texture)
+{
+	SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
+
+	if (gxm_texture_get_type(inner) == SCE_GXM_TEXTURE_LINEAR_STRIDED)
+		return SCE_GXM_TEXTURE_ADDR_CLAMP;
+	return inner->uaddr_mode;
+}
+
+SceGxmTextureAddrMode sceGxmTextureGetVAddrMode(const SceGxmTexture *texture)
+{
+	return ((SceGxmTextureInner *)texture)->vaddr_mode;
+}
+
+int sceGxmTextureGetVAddrModeSafe(const SceGxmTexture *texture)
+{
+	SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
+
+	if (gxm_texture_get_type(inner) == SCE_GXM_TEXTURE_LINEAR_STRIDED)
+		return SCE_GXM_TEXTURE_ADDR_CLAMP;
+	return inner->vaddr_mode;
+}
+
+uint32_t sceGxmTextureGetWidth(const SceGxmTexture *texture)
+{
+	return gxm_texture_get_width((SceGxmTextureInner *)texture);
+}
+
 const SceGxmProgramParameter *sceGxmProgramFindParameterByName(const SceGxmProgram *program, const char *name)
 {
 	const uint8_t *parameter_bytes;
@@ -1379,6 +1567,61 @@ const SceGxmProgramParameter *sceGxmProgramFindParameterByName(const SceGxmProgr
 	}
 
 	return NULL;
+}
+
+static void upload_fragment_texture_descriptors(SceGxmContext *context)
+{
+	VitaMemBlockInfo *tex_block;
+	void *tex_data;
+	DkSampler sampler;
+	DkImageLayoutMaker image_layout_maker;
+	DkImageLayout image_layout;
+	DkImage image;
+	DkImageView image_view;
+	DkGpuAddr desc_addr;
+	struct {
+		DkImageDescriptor images[SCE_GXM_MAX_TEXTURE_UNITS];
+		DkSamplerDescriptor samplers[SCE_GXM_MAX_TEXTURE_UNITS];
+	} descriptors;
+
+	for (int i = 0; i < SCE_GXM_MAX_TEXTURE_UNITS; i++) {
+		if (context->fragment_textures[i].data_addr) {
+			tex_data = (void *)(context->fragment_textures[i].data_addr << 2);
+			tex_block = SceSysmem_get_vita_memblock_info_for_addr(tex_data);
+			if (!tex_block)
+				continue;
+
+			dkSamplerDefaults(&sampler);
+			sampler.wrapMode[0] = gxm_texture_addr_mode_to_dk_wrap_mode(context->fragment_textures[i].uaddr_mode);
+			sampler.wrapMode[1] = gxm_texture_addr_mode_to_dk_wrap_mode(context->fragment_textures[i].vaddr_mode);
+			sampler.minFilter = gxm_texture_filter_to_dk_filter(context->fragment_textures[i].min_filter);
+			sampler.magFilter = gxm_texture_filter_to_dk_filter(context->fragment_textures[i].mag_filter);
+			dkSamplerDescriptorInitialize(&descriptors.samplers[i], &sampler);
+
+			dkImageLayoutMakerDefaults(&image_layout_maker, g_dk_device);
+			image_layout_maker.flags = DkImageFlags_PitchLinear;
+			image_layout_maker.type = DkImageType_2D;
+			image_layout_maker.format = DkImageFormat_RGBA8_Unorm;
+			image_layout_maker.dimensions[0] = gxm_texture_get_width(&context->fragment_textures[i]);
+			image_layout_maker.dimensions[1] = gxm_texture_get_height(&context->fragment_textures[i]);
+			image_layout_maker.pitchStride = gxm_texture_get_width(&context->fragment_textures[i]) *
+							 gxm_color_format_bytes_per_pixel(gxm_texture_get_format(&context->fragment_textures[i]));
+			dkImageLayoutInitialize(&image_layout, &image_layout_maker);
+
+			dkImageInitialize(&image, &image_layout, tex_block->dk_memblock,
+					  (uintptr_t)tex_data - (uintptr_t)tex_block->base);
+			dkImageViewDefaults(&image_view, &image);
+			dkImageDescriptorInitialize(&descriptors.images[i], &image_view, false, false);
+			dkCmdBufBindTexture(context->cmdbuf, DkStage_Fragment, i, dkMakeTextureHandle(i, i));
+		}
+	}
+
+	desc_addr = dkMemBlockGetGpuAddr(context->fragment_tex_descriptor_set_memblock);
+	dkCmdBufPushData(context->cmdbuf, desc_addr, &descriptors, sizeof(descriptors));
+	dkCmdBufBindImageDescriptorSet(context->cmdbuf, desc_addr, SCE_GXM_MAX_TEXTURE_UNITS);
+	dkCmdBufBindSamplerDescriptorSet(context->cmdbuf,
+					 desc_addr + SCE_GXM_MAX_TEXTURE_UNITS * sizeof(DkImageDescriptor),
+					 SCE_GXM_MAX_TEXTURE_UNITS);
 }
 
 static void context_flush_dirty_state(SceGxmContext *context)
@@ -1419,60 +1662,7 @@ static void context_flush_dirty_state(SceGxmContext *context)
 	}
 
 	if (context->dirty.bit.fragment_textures) {
-		struct {
-			DkImageDescriptor images[SCE_GXM_MAX_TEXTURE_UNITS];
-			DkSamplerDescriptor samplers[SCE_GXM_MAX_TEXTURE_UNITS];
-		} descriptors;
-
-		for (int i = 0; i < SCE_GXM_MAX_TEXTURE_UNITS; i++) {
-			if (context->fragment_textures[i].data_addr) {
-				VitaMemBlockInfo *tex_block;
-				uint32_t tex_offset;
-				void *data = (void *)(context->fragment_textures[i].data_addr << 2);
-
-				tex_block = SceSysmem_get_vita_memblock_info_for_addr(data);
-				if (!tex_block)
-					continue;
-
-				tex_offset = (uintptr_t)data - (uintptr_t)tex_block->base;
-
-				DkSampler sampler;
-				dkSamplerDefaults(&sampler);
-				sampler.wrapMode[0] = DkWrapMode_ClampToEdge;
-				sampler.wrapMode[1] = DkWrapMode_ClampToEdge;
-				sampler.minFilter = DkFilter_Nearest;
-				sampler.magFilter = DkFilter_Nearest;
-				dkSamplerDescriptorInitialize(&descriptors.samplers[i], &sampler);
-
-				DkImageLayoutMaker image_layout_maker;
-				dkImageLayoutMakerDefaults(&image_layout_maker, g_dk_device);
-				image_layout_maker.flags = DkImageFlags_PitchLinear;
-				image_layout_maker.type = DkImageType_2D;
-				image_layout_maker.format = DkImageFormat_RGBA8_Unorm;
-				image_layout_maker.dimensions[0] = context->fragment_textures[i].width + 1;
-				image_layout_maker.dimensions[1] = context->fragment_textures[i].height + 1;
-				image_layout_maker.pitchStride = (context->fragment_textures[i].width + 1) * 4;
-
-				DkImageLayout image_layout;
-				dkImageLayoutInitialize(&image_layout, &image_layout_maker);
-				DkImage image;
-				dkImageInitialize(&image, &image_layout, tex_block->dk_memblock, tex_offset);
-				DkImageView image_view;
-				dkImageViewDefaults(&image_view, &image);
-
-				dkImageDescriptorInitialize(&descriptors.images[i], &image_view, false, false);
-
-				dkCmdBufBindTexture(context->cmdbuf, DkStage_Fragment, i, dkMakeTextureHandle(i, i));
-			}
-
-			DkGpuAddr desc = dkMemBlockGetGpuAddr(context->fragment_tex_descriptor_set_memblock);
-			dkCmdBufPushData(context->cmdbuf, desc, &descriptors, sizeof(descriptors));
-			dkCmdBufBindImageDescriptorSet(context->cmdbuf, desc, SCE_GXM_MAX_TEXTURE_UNITS);
-			dkCmdBufBindSamplerDescriptorSet(context->cmdbuf,
-							 desc + SCE_GXM_MAX_TEXTURE_UNITS * sizeof(DkImageDescriptor),
-							 SCE_GXM_MAX_TEXTURE_UNITS);
-		}
-
+		upload_fragment_texture_descriptors(context);
 		context->dirty.bit.fragment_textures = false;
 	}
 }
@@ -1587,6 +1777,26 @@ void SceGxm_register(void)
 		{0x7B1FABB6, sceGxmReserveFragmentDefaultUniformBuffer},
 		{0x65DD0C84, sceGxmSetUniformDataF},
 		{0x4811AECB, sceGxmTextureInitLinear},
+		{0x5341BD46, sceGxmTextureGetData},
+		{0xE868D2B3, sceGxmTextureGetFormat},
+		{0xF23FCE81, sceGxmTextureGetGammaMode},
+		{0x5420A086, sceGxmTextureGetHeight},
+		{0x2DE55DA5, sceGxmTextureGetLodBias},
+		{0xBE524A2C, sceGxmTextureGetLodMin},
+		{0xAE7FBB51, sceGxmTextureGetMagFilter},
+		{0x920666C6, sceGxmTextureGetMinFilter},
+		{0xCE94CA15, sceGxmTextureGetMipFilter},
+		{0xF7B7B1E4, sceGxmTextureGetMipmapCount},
+		{0x4CC42929, sceGxmTextureGetMipmapCountUnsafe},
+		{0x512BB86C, sceGxmTextureGetNormalizeMode},
+		{0x0D189C30, sceGxmTextureGetPalette},
+		{0xB0BD52F3, sceGxmTextureGetStride},
+		{0xF65D4917, sceGxmTextureGetType},
+		{0x2AE22788, sceGxmTextureGetUAddrMode},
+		{0xC037DA83, sceGxmTextureGetUAddrModeSafe},
+		{0x46136CA9, sceGxmTextureGetVAddrMode},
+		{0xD2F0D9C1, sceGxmTextureGetVAddrModeSafe},
+		{0x126A3EB3, sceGxmTextureGetWidth},
 		{0x277794C4, sceGxmProgramFindParameterByName},
 		{0xBC059AFC, sceGxmDraw},
 		{0xC61E34FC, sceGxmMapMemory},
