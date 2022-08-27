@@ -1,4 +1,3 @@
 [submodule "Vita3K"]
 	path = Vita3K
-	url = https://github.com/xerpi/Vita3K.git
-	branch = vita2hos-integration
+	url = https://github.com/Vita3K/Vita3K.git
