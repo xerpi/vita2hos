@@ -269,12 +269,19 @@ struct GXMRenderVertUniformBlock {
 	float viewport_flag;
 	float screen_width;
 	float screen_height;
+	float padding;
+	float integral_texture_query_format[SCE_GXM_MAX_TEXTURE_UNITS];
+	float z_offset;
+	float z_scale;
 };
 
 struct GXMRenderFragUniformBlock {
 	float back_disabled;
 	float front_disabled;
 	float writing_mask;
+	float use_raw_image;
+	float integral_texture_query_format[SCE_GXM_MAX_TEXTURE_UNITS];
+	int32_t res_multiplier;
 };
 
 /* Global state */
@@ -1010,6 +1017,8 @@ static void set_vita3k_gxm_uniform_blocks(SceGxmContext *context, const DkViewpo
 	struct GXMRenderVertUniformBlock vert_unif = {
 		.viewport_flip = {1.0f, 1.0f, 1.0f, 1.0f},
 		.viewport_flag = (0) ? 0.0f : 1.0f,
+		.z_offset = 0.0f,
+		.z_scale = 1.0f,
 		.screen_width = viewport->width,
 		.screen_height = viewport->height
 	};
@@ -1017,7 +1026,9 @@ static void set_vita3k_gxm_uniform_blocks(SceGxmContext *context, const DkViewpo
 	struct GXMRenderFragUniformBlock frag_unif = {
 		.back_disabled = 0.0f,
 		.front_disabled = 0.0f,
-		.writing_mask = 1.0f
+		.writing_mask = 1.0f,
+		.use_raw_image = 1.0f,
+		.res_multiplier = 1
 	};
 
 	memcpy(dkMemBlockGetCpuAddr(context->gxm_vert_unif_block_memblock), &vert_unif, sizeof(vert_unif));
@@ -1609,7 +1620,7 @@ static void upload_fragment_texture_descriptors(SceGxmContext *context)
 			dkImageLayoutInitialize(&image_layout, &image_layout_maker);
 
 			dkImageInitialize(&image, &image_layout, tex_block->dk_memblock,
-					  (uintptr_t)tex_data - (uintptr_t)tex_block->base);
+					  dk_memblock_cpu_addr_offset(tex_block->dk_memblock, tex_data));
 			dkImageViewDefaults(&image_view, &image);
 			dkImageDescriptorInitialize(&descriptors.images[i], &image_view, false, false);
 			dkCmdBufBindTexture(context->cmdbuf, DkStage_Fragment, i, dkMakeTextureHandle(i, i));
