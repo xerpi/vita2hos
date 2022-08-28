@@ -53,6 +53,7 @@ dkms.conf
 
 # VS Code
 .vscode
+.devcontainer
 
 # Switch
 build/
@@ -63,3 +64,4 @@ build/
 # Other
 *.txt
 *.lst
+*.jpg
