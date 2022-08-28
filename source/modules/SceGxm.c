@@ -555,7 +555,7 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 	ctx->back_stencil_state.compare_mask = 0;
 	ctx->back_stencil_state.write_mask = 0;
 
-	ctx->dirty.raw = 0;
+	ctx->dirty.raw = ~(uint32_t)0;
 
 	*context = ctx;
 
