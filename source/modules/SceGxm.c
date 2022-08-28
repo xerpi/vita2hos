@@ -117,6 +117,14 @@ typedef struct SceGxmContext {
 			uint8_t write_mask;
 		} front_stencil_state, back_stencil_state;
 		SceGxmTextureInner fragment_textures[SCE_GXM_MAX_TEXTURE_UNITS];
+		struct {
+			uint16_t width;
+			uint16_t height;
+			uint32_t size;
+			DkMemBlock memblock;
+			DkImage image;
+			DkImageView view;
+		} shadow_ds_surface;
 		/* Dirty state tracking */
 		union {
 			struct {
@@ -569,6 +577,9 @@ int sceGxmDestroyContext(SceGxmContext *context)
 	dkMemBlockDestroy(context->gxm_frag_unif_block_memblock);
 	dkMemBlockDestroy(context->fragment_tex_descriptor_set_memblock);
 	dkCmdBufDestroy(context->cmdbuf);
+
+	if (context->shadow_ds_surface.memblock)
+		dkMemBlockDestroy(context->shadow_ds_surface.memblock);
 
 	return 0;
 }
@@ -1042,6 +1053,42 @@ static void set_vita3k_gxm_uniform_blocks(SceGxmContext *context, const DkViewpo
 				  ALIGN(sizeof(frag_unif), DK_UNIFORM_BUF_ALIGNMENT));
 }
 
+static void ensure_shadow_ds_surface(SceGxmContext *context, uint32_t width, uint32_t height)
+{
+	DkImageLayoutMaker maker;
+	DkImageLayout layout;
+	uint32_t ds_surface_size, ds_surface_align;
+
+	dkImageLayoutMakerDefaults(&maker, g_dk_device);
+	maker.flags = DkImageFlags_UsageRender;
+	maker.format = DkImageFormat_Z24S8;
+	maker.dimensions[0] = width;
+	maker.dimensions[1] = height;
+	dkImageLayoutInitialize(&layout, &maker);
+
+	ds_surface_size  = dkImageLayoutGetSize(&layout);
+	ds_surface_align = dkImageLayoutGetAlignment(&layout);
+	ds_surface_size  = ALIGN(ds_surface_size, ds_surface_align);
+
+	if (ds_surface_size > context->shadow_ds_surface.size) {
+		if (context->shadow_ds_surface.memblock)
+			dkMemBlockDestroy(context->shadow_ds_surface.memblock);
+
+		context->shadow_ds_surface.memblock =
+			dk_alloc_memblock(g_dk_device, ds_surface_size,
+					  DkMemBlockFlags_CpuUncached |
+					  DkMemBlockFlags_GpuCached |
+					  DkMemBlockFlags_Image);
+	}
+
+	dkImageInitialize(&context->shadow_ds_surface.image, &layout, context->shadow_ds_surface.memblock, 0);
+	dkImageViewDefaults(&context->shadow_ds_surface.view, &context->shadow_ds_surface.image);
+
+	context->shadow_ds_surface.width = width;
+	context->shadow_ds_surface.height = height;
+	context->shadow_ds_surface.size = ds_surface_size;
+}
+
 int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 		     const SceGxmRenderTarget *renderTarget, const SceGxmValidRegion *validRegion,
 		     SceGxmSyncObject *vertexSyncObject, SceGxmSyncObject *fragmentSyncObject,
@@ -1051,11 +1098,10 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 	DkMemBlock color_surface_block;
 	DkImage color_surface_image;
 	DkImageView color_surface_view;
-	DkMemBlock depth_stencil_surface_block;
-	DkImage depth_stencil_surface_image;
-	DkImageView depth_stencil_surface_view;
-	DkViewport viewport = { 0.0f, 0.0f, (float)renderTarget->params.width, (float)renderTarget->params.height, 0.0f, 1.0f };
-	DkScissor scissor = { 0, 0, renderTarget->params.width, renderTarget->params.height };
+	uint16_t rt_width = renderTarget->params.width;
+	uint16_t rt_height = renderTarget->params.height;
+	DkViewport viewport = { 0.0f, 0.0f, (float)rt_width, (float)rt_height, 0.0f, 1.0f };
+	DkScissor scissor = { 0, 0, rt_width, rt_height };
 	SceGxmColorSurfaceInner *color_surface_inner = (SceGxmColorSurfaceInner *)colorSurface;
 
 	if (context->in_scene)
@@ -1066,6 +1112,11 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 		return SCE_GXM_ERROR_INVALID_VALUE;
 
 	if (depthStencil) {
+		if ((context->shadow_ds_surface.width != rt_width) ||
+		    (context->shadow_ds_surface.height != rt_height))
+			ensure_shadow_ds_surface(context, rt_width, rt_height);
+
+#if 0
 		depth_stencil_surface_block = SceSysmem_get_dk_memblock_for_addr(depthStencil->depthData);
 		if (!depth_stencil_surface_block)
 			return SCE_GXM_ERROR_INVALID_VALUE;
@@ -1073,9 +1124,9 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 		dk_image_view_for_gxm_depth_stencil_surface(&depth_stencil_surface_image,
 							    &depth_stencil_surface_view,
 							    depth_stencil_surface_block,
-							    renderTarget->params.width,
-							    renderTarget->params.height,
+							    rt_width, rt_height,
 							    depthStencil);
+#endif
 	}
 
 	LOG("sceGxmBeginScene to renderTarget %p, fragmentSyncObject: %p, "
@@ -1091,7 +1142,7 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 	dkCmdBufClear(context->cmdbuf);
 
 	dkCmdBufBindRenderTarget(context->cmdbuf, &color_surface_view,
-				 depthStencil ? &depth_stencil_surface_view : NULL);
+				 depthStencil ? &context->shadow_ds_surface.view : NULL);
 
 	dkCmdBufSetViewports(context->cmdbuf, 0, &viewport, 1);
 	dkCmdBufSetScissors(context->cmdbuf, 0, &scissor, 1);

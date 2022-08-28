@@ -49,7 +49,7 @@ static void create_swapchain(uint32_t width, uint32_t height)
 	/* Retrieve necessary size and alignment for the framebuffers */
 	framebuffer_size  = dkImageLayoutGetSize(&framebuffer_layout);
 	framebuffer_align = dkImageLayoutGetAlignment(&framebuffer_layout);
-	framebuffer_size  = (framebuffer_size + framebuffer_align - 1) & ~(framebuffer_align - 1);
+	framebuffer_size  = ALIGN(framebuffer_size, framebuffer_align);
 
 	/* Create a memory block that will host the framebuffers */
 	g_framebuffer_memblock = dk_alloc_memblock(g_dk_device, SWAPCHAIN_SIZE * framebuffer_size,
