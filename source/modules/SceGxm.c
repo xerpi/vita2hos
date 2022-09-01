@@ -23,6 +23,11 @@
 
 #define SCE_GXM_NOTIFICATION_COUNT	512
 
+#define SCE_GXM_DEPTH_STENCIL_CTRL_FORMAT_BITS	0xFFFFF000
+#define SCE_GXM_DEPTH_STENCIL_CTRL_STENCIL_BITS	0xF
+#define SCE_GXM_DEPTH_STENCIL_CTRL_MASK_BIT	0x10
+#define SCE_GXM_DEPTH_STENCIL_CTRL_DISABLE_BIT	0x20
+
 #define MAX_GXM_MAPPED_MEMORY_BLOCKS	256
 
 typedef struct {
@@ -107,6 +112,7 @@ typedef struct SceGxmContext {
 		const SceGxmFragmentProgram *fragment_program;
 		bool in_scene;
 		bool two_sided_mode;
+		bool discard_stencil;
 		DkRasterizerState rasterizer_state;
 		DkColorState color_state;
 		DkColorWriteState color_write_state;
@@ -563,8 +569,6 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 	ctx->back_stencil_state.compare_mask = 0;
 	ctx->back_stencil_state.write_mask = 0;
 
-	ctx->dirty.raw = ~(uint32_t)0;
-
 	*context = ctx;
 
 	return 0;
@@ -900,11 +904,12 @@ int sceGxmDepthStencilSurfaceInit(SceGxmDepthStencilSurface *surface,
 	else if ((strideInSamples == 0) || ((strideInSamples % SCE_GXM_TILE_SIZEX) != 0))
 		return SCE_GXM_ERROR_INVALID_VALUE;
 
-	surface->zlsControl = 0;
+	surface->zlsControl = SCE_GXM_DEPTH_STENCIL_FORCE_LOAD_DISABLED |
+			      SCE_GXM_DEPTH_STENCIL_FORCE_STORE_DISABLED;
 	surface->depthData = depthData;
 	surface->stencilData = stencilData;
 	surface->backgroundDepth = 0.0f;
-	surface->backgroundControl = 0;
+	surface->backgroundControl = depthStencilFormat | SCE_GXM_DEPTH_STENCIL_CTRL_MASK_BIT;
 
 	return 0;
 }
@@ -1070,9 +1075,13 @@ static void ensure_shadow_ds_surface(SceGxmContext *context, uint32_t width, uin
 	ds_surface_align = dkImageLayoutGetAlignment(&layout);
 	ds_surface_size  = ALIGN(ds_surface_size, ds_surface_align);
 
+	LOG("Creating D/S surface: %d x %d, size %d, align: %d", width, height, ds_surface_size, ds_surface_align);
+
 	if (ds_surface_size > context->shadow_ds_surface.size) {
-		if (context->shadow_ds_surface.memblock)
+		if (context->shadow_ds_surface.memblock) {
+			/* TODO: Wait until previous depth/stencil buffer is not used anymore before deallocating it */
 			dkMemBlockDestroy(context->shadow_ds_surface.memblock);
+		}
 
 		context->shadow_ds_surface.memblock =
 			dk_alloc_memblock(g_dk_device, ds_surface_size,
@@ -1157,8 +1166,15 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 	if (fragmentSyncObject)
 		dkCmdBufWaitFence(context->cmdbuf, &fragmentSyncObject->fence);
 
-	if (depthStencil)
-		dkCmdBufClearDepthStencil(context->cmdbuf, true, 1.0f, 0xFF, 0);
+	if (depthStencil && !(depthStencil->backgroundControl & SCE_GXM_DEPTH_STENCIL_FORCE_LOAD_ENABLED)) {
+		dkCmdBufClearDepthStencil(context->cmdbuf, true, 1.0f, SCE_GXM_DEPTH_STENCIL_CTRL_STENCIL_BITS,
+					  depthStencil->backgroundControl & SCE_GXM_DEPTH_STENCIL_CTRL_STENCIL_BITS);
+	}
+
+	context->discard_stencil = depthStencil && !(depthStencil->backgroundControl & SCE_GXM_DEPTH_STENCIL_FORCE_STORE_ENABLED);
+
+	/* Mark all state as dirty to make sure we bind everything before the first draw call */
+	context->dirty.raw = ~(uint32_t)0;
 
 	context->in_scene = true;
 
@@ -1195,6 +1211,13 @@ int sceGxmEndScene(SceGxmContext *context, const SceGxmNotification *vertexNotif
 		dkVariableInitialize(&variable, g_notification_region_memblock, offset);
 		dkCmdBufSignalVariable(context->cmdbuf, &variable, DkVarOp_Set,
 				       fragmentNotification->value, DkPipelinePos_Bottom);
+	}
+
+	if (context->discard_stencil) {
+		/* Wait for fragments to be completed before discarding depth/stencil buffer */
+		dkCmdBufBarrier(context->cmdbuf, DkBarrier_Fragments, 0);
+		/* Discard the stencil buffer since we don't need it anymore */
+		dkCmdBufDiscardDepthStencil(context->cmdbuf);
 	}
 
 	cmd_list = dkCmdBufFinishList(context->cmdbuf);
