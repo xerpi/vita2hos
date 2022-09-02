@@ -113,7 +113,7 @@ int main(int argc, char *argv[])
 
 	log_to_fb_console = false;
 
-	time_t now = time(0);
+	time_t now = time(NULL);
 	struct tm *timeinfo = localtime(&now);
 
 	LOG("Starting vita2hos at: %d-%d-%d %d:%d:%d",
