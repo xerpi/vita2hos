@@ -1065,7 +1065,7 @@ static void ensure_shadow_ds_surface(SceGxmContext *context, uint32_t width, uin
 	uint32_t ds_surface_size, ds_surface_align;
 
 	dkImageLayoutMakerDefaults(&maker, g_dk_device);
-	maker.flags = DkImageFlags_UsageRender;
+	maker.flags = DkImageFlags_UsageRender | DkImageFlags_HwCompression;
 	maker.format = DkImageFormat_Z24S8;
 	maker.dimensions[0] = width;
 	maker.dimensions[1] = height;
@@ -1085,7 +1085,6 @@ static void ensure_shadow_ds_surface(SceGxmContext *context, uint32_t width, uin
 
 		context->shadow_ds_surface.memblock =
 			dk_alloc_memblock(g_dk_device, ds_surface_size,
-					  DkMemBlockFlags_CpuUncached |
 					  DkMemBlockFlags_GpuCached |
 					  DkMemBlockFlags_Image);
 	}
@@ -1214,6 +1213,7 @@ int sceGxmEndScene(SceGxmContext *context, const SceGxmNotification *vertexNotif
 	}
 
 	if (context->discard_stencil) {
+		LOG("Discarding stencil buffer");
 		/* Wait for fragments to be completed before discarding depth/stencil buffer */
 		dkCmdBufBarrier(context->cmdbuf, DkBarrier_Fragments, 0);
 		/* Discard the stencil buffer since we don't need it anymore */
