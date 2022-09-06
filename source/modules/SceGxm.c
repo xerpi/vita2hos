@@ -283,8 +283,6 @@ struct GXMRenderVertUniformBlock {
 	float viewport_flag;
 	float screen_width;
 	float screen_height;
-	float padding;
-	float integral_texture_query_format[SCE_GXM_MAX_TEXTURE_UNITS];
 	float z_offset;
 	float z_scale;
 };
@@ -294,7 +292,6 @@ struct GXMRenderFragUniformBlock {
 	float front_disabled;
 	float writing_mask;
 	float use_raw_image;
-	float integral_texture_query_format[SCE_GXM_MAX_TEXTURE_UNITS];
 	int32_t res_multiplier;
 };
 
@@ -1042,9 +1039,9 @@ static void set_vita3k_gxm_uniform_blocks(SceGxmContext *context, const DkViewpo
 	struct GXMRenderFragUniformBlock frag_unif = {
 		.back_disabled = 0.0f,
 		.front_disabled = 0.0f,
-		.writing_mask = 1.0f,
-		.use_raw_image = 1.0f,
-		.res_multiplier = 1
+		.writing_mask = 0.0f,
+		.use_raw_image = 0.0f,
+		.res_multiplier = 0
 	};
 
 	memcpy(dkMemBlockGetCpuAddr(context->gxm_vert_unif_block_memblock), &vert_unif, sizeof(vert_unif));
