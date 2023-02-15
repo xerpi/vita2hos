@@ -105,6 +105,7 @@ static void create_vita2hos_paths()
 
 int main(int argc, char *argv[])
 {
+	time_t now;
 	Jit jit;
 	void *entry;
 	int ret;
@@ -113,15 +114,11 @@ int main(int argc, char *argv[])
 
 	log_to_fb_console = false;
 
-	time_t now = time(NULL);
-	struct tm *timeinfo = localtime(&now);
-
-	LOG("Starting vita2hos at: %d-%d-%d %d:%d:%d",
-	 	timeinfo->tm_year + 1900, timeinfo->tm_mon + 1, timeinfo->tm_mday,
-		timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
-
 	LOG("vita2hos " VITA2HOS_MAJOR "." VITA2HOS_MINOR "." VITA2HOS_PATCH "-" VITA2HOS_HASH
 	    " (" __DATE__ " " __TIME__ ")");
+
+	now = time(NULL);
+	LOG("Starting at %s", ctime(&now));
 
 	create_vita2hos_paths();
 
