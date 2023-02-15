@@ -1,8 +1,10 @@
 #include <assert.h>
+#include <arpa/inet.h>
 #include <elf.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <switch.h>
@@ -112,7 +114,11 @@ int main(int argc, char *argv[])
 
 	consoleDebugInit(debugDevice_SVC);
 
-	log_to_fb_console = false;
+	socketInitializeDefault();
+	inet_pton(AF_INET, "192.168.0.38", &__nxlink_host);
+	/* Port 28771 (nc -kl 28771) */
+	nxlinkStdio();
+	log_to_fb_console = true;
 
 	LOG("vita2hos " VITA2HOS_MAJOR "." VITA2HOS_MINOR "." VITA2HOS_PATCH "-" VITA2HOS_HASH
 	    " (" __DATE__ " " __TIME__ ")");

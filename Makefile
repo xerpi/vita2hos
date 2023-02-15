@@ -184,7 +184,7 @@ ifneq ($(ROMFS),)
 	export NROFLAGS += --romfsdir=$(CURDIR)/$(ROMFS)
 endif
 
-.PHONY: $(BUILD) clean all
+.PHONY: $(BUILD) clean all send
 
 #---------------------------------------------------------------------------------
 all: $(BUILD)
@@ -202,6 +202,8 @@ else
 	@rm -fr $(BUILD) $(TARGET).nsp $(TARGET).nso $(TARGET).npdm $(TARGET).elf $(TARGET).map
 endif
 
+send: $(BUILD) $(OUTPUT).nsp
+	switchpush $(OUTPUT).nsp atmosphere/$(TARGET).nsp
 
 #---------------------------------------------------------------------------------
 else
