@@ -108,6 +108,7 @@ static void create_vita2hos_paths()
 int main(int argc, char *argv[])
 {
 	time_t now;
+	char timestr[32];
 	Jit jit;
 	void *entry;
 	int ret;
@@ -124,7 +125,8 @@ int main(int argc, char *argv[])
 	    " (" __DATE__ " " __TIME__ ")");
 
 	now = time(NULL);
-	LOG("Starting at %s", ctime(&now));
+	strftime(timestr, sizeof(timestr), "%c", localtime(&now));
+	LOG("Starting at %s", timestr);
 
 	create_vita2hos_paths();
 

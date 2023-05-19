@@ -54,8 +54,7 @@ SOURCES		:= source source/modules Vita3K/vita3k/gxm/src Vita3K/vita3k/shader/src
 		   Vita3K/vita3k/shader/src/translator
 DATA		:= data
 INCLUDES	:= include include/modules include/vita3k Vita3K/vita3k/gxm/include Vita3K/vita3k/shader/include \
-		   Vita3K/vita3k/shader/src/translator Vita3K/vita3k/features/include Vita3K/vita3k/util/include \
-		   Vita3K/external/rpcs3/include
+		   Vita3K/vita3k/features/include Vita3K/vita3k/util/include
 SHADER		:= shader
 #ROMFS		:= romfs
 
