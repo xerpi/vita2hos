@@ -37,9 +37,8 @@ When loading a PlayStation Vita executable, _vita2hos_ redirects the [module](ht
 ### Running it on yuzu
 
 1. Copy a PlayStation Vita executable (`.velf` or `.self`/`eboot.bin`) to `sd:/vita2hos/test.elf` (_File_ → _Open yuzu Folder_ → `sdmc/`)
-2. Disable Macro JIT (_Emulation_ → _Configure_ → _General_ → _Debug_ → _Disable Macro JIT_)
-3. Run `vita2hos.nsp`
-4. Enjoy!
+2. Run `vita2hos.nsp`
+3. Enjoy!
 
 #### Notes:
 
