@@ -40,21 +40,12 @@ When loading a PlayStation Vita executable, _vita2hos_ redirects the [module](ht
 2. Run `vita2hos.nsp`
 3. Enjoy!
 
-#### Notes:
-
-Make sure to use a very recent build of [yuzu](https://yuzu-emu.org/downloads/), such as _Mainline_ or _Early Access Builds_.
-
 ### Running it on Ryujinx
 
 1. Copy a PlayStation Vita executable (`.velf` or `.self`/`eboot.bin`) to `sd:/vita2hos/test.elf` (_File_ → _Open Ryujinx Folder_ → `sdcard/`)
 2. Disable PPTC (_Options_ → _Settings_ → _System_ → Unselect _Enable PPTC (Profiled Persistent Translation Cache)_)
 3. Run `vita2hos.nsp`
 4. Enjoy!
-
-#### Notes:
-
-- Ryujinx >= 1.1.133 is required
-- Some ARM Thumb instructions are not yet implemented on Ryujinx
 
 ## Project status, compatibility and supported features
 
