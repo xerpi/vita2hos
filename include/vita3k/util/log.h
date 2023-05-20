@@ -8,6 +8,8 @@
 #include <string>
 #include <fmt/core.h>
 
+#include <gxm/types.h>
+
 #define LOG_TRACE(...) LOGSTR(fmt::format(__VA_ARGS__).c_str())
 #define LOG_DEBUG(...) LOGSTR(fmt::format(__VA_ARGS__).c_str())
 #define LOG_INFO(...) LOGSTR(fmt::format(__VA_ARGS__).c_str())
@@ -29,5 +31,11 @@ std::string log_hex_full(T val) {
     ss << std::setfill('0') << std::setw(sizeof(T) * 2) << std::hex << val;
     return ss.str();
 }
+
+template <> struct fmt::formatter<SceGxmAttributeFormat>: formatter<uint32_t> {
+  auto format(SceGxmAttributeFormat fmt, format_context& ctx) const {
+	  return formatter<uint32_t>::format((uint32_t)fmt, ctx);
+  }
+};
 
 #endif
