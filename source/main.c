@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
 	consoleDebugInit(debugDevice_SVC);
 
 	socketInitializeDefault();
-	inet_pton(AF_INET, "192.168.0.38", &__nxlink_host);
+	inet_pton(AF_INET, "127.0.0.1", &__nxlink_host);
 	/* Port 28771 (nc -kl 28771) */
 	nxlinkStdio();
 	log_to_fb_console = true;
