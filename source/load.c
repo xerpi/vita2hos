@@ -15,7 +15,7 @@
 #define IMP_GET_NEXT(imp) ((sce_module_imports_u_t *)((char *)imp + imp->size))
 #define IMP_GET_FUNC_COUNT(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.num_syms_funcs : imp->imports.num_syms_funcs)
 #define IMP_GET_VARS_COUNT(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.num_syms_vars : imp->imports.num_syms_vars)
-#define IMP_GET_NID(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.module_nid : imp->imports.module_nid)
+#define IMP_GET_NID(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.library_nid : imp->imports.library_nid)
 #define IMP_GET_NAME(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.library_name : imp->imports.library_name)
 #define IMP_GET_FUNC_TABLE(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.func_nid_table : imp->imports.func_nid_table)
 #define IMP_GET_FUNC_ENTRIES(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.func_entry_table : imp->imports.func_entry_table)
@@ -410,7 +410,7 @@ static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_inf
 
 	for (; (void *)import < end; import = IMP_GET_NEXT(import)) {
 		imp_name = (void *)CODE_RX_TO_RW_ADDR(code_rx_addr, code_rw_addr, IMP_GET_NAME(import));
-		LOG("Resolving imports for %s", imp_name);
+		LOG("Resolving imports for %s (NID: 0x%08" PRIx32 ")", imp_name, IMP_GET_NID(import));
 		if (resolve_imports(code_rx_addr, code_rw_addr, import) < 0) {
 			LOG("Failed to resolve imports for %s", imp_name);
 			goto err_free_data;
@@ -445,6 +445,7 @@ static int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_impo
 	const void *addr;
 	uint32_t nid;
 	uint32_t *stub;
+	uint32_t lib_nid = IMP_GET_NID(import);
 
 	/* The module imports struct contains pointers to entries to the RX JIT area because
 	 * it has already been relocated, so we have to convert them to RW addresses */
@@ -452,7 +453,7 @@ static int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_impo
 	for (uint32_t i = 0; i < IMP_GET_FUNC_COUNT(import); i++) {
 		nid = ((uint32_t *)CODE_RX_TO_RW_ADDR(rx_base, rw_base, IMP_GET_FUNC_TABLE(import)))[i];
 		stub = (void *)CODE_RX_TO_RW_ADDR(rx_base, rw_base, IMP_GET_FUNC_ENTRIES(import)[i]);
-		addr = module_get_export_addr(nid);
+		addr = module_get_func_export(lib_nid, nid);
 
 		if (addr) {
 			stub[0] = arm_encode_movw(12, (uint16_t)(uintptr_t)addr);

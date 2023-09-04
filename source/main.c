@@ -36,17 +36,6 @@ static void dk_debug_callback(void *userData, const char *context, DkResult resu
 	}
 }
 
-static void register_modules(void)
-{
-	SceSysmem_register();
-	SceLibKernel_register();
-	SceKernelThreadMgr_register();
-	SceDisplay_register();
-	SceGxm_register();
-	SceCtrl_register();
-	SceTouch_register();
-}
-
 static int launch(SceKernelThreadEntry entry)
 {
 	DkDeviceMaker device_maker;
@@ -130,8 +119,6 @@ int main(int argc, char *argv[])
 
 	create_vita2hos_paths();
 
-	register_modules();
-
 	ret = load_exe(&jit, VITA2HOS_EXE_FILE, &entry);
 	if (ret == 0) {
 		LOG("Launching PlayStation Vita executable!");
@@ -148,8 +135,6 @@ int main(int argc, char *argv[])
 		fatal_error("Error loading PlayStation Vita executable.",
 			    "Make sure to place it to '" VITA2HOS_EXE_FILE "'");
 	}
-
-	module_finish();
 
 	return 0;
 }

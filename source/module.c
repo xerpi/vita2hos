@@ -3,27 +3,20 @@
 #include <string.h>
 #include "module.h"
 
-static export_entry_t *g_exports = NULL;
-static size_t g_exports_num = 0;
-
-void module_finish(void)
+const void *module_get_func_export(uint32_t lib_nid, uint32_t func_nid)
 {
-        free(g_exports);
-        g_exports_num = 0;
-}
+        size_t num_libs = NUM_EXPORTED_LIBS;
 
-void module_register_exports(const export_entry_t *entries, uint32_t count)
-{
-        g_exports = realloc(g_exports, (g_exports_num + count) * sizeof(export_entry_t));
-        memcpy(&g_exports[g_exports_num], entries, count * sizeof(export_entry_t));
-        g_exports_num += count;
-}
+        for (size_t i = 0; i < num_libs; i++) {
+                if (__start_exported_libraries[i].nid == lib_nid) {
+                        const library_t *const lib = &__start_exported_libraries[i];
+                        size_t num_funcs = NUM_FUNCS(lib);
 
-const void *module_get_export_addr(uint32_t nid)
-{
-        for (size_t i = 0; i < g_exports_num; i++) {
-                if (g_exports[i].nid == nid)
-                        return g_exports[i].addr;
+                        for (size_t j = 0; j < num_funcs; j++) {
+                                if (lib->func_nidtable_start[j] == func_nid)
+                                        return lib->func_table_start[j];
+                        }
+                }
         }
 
         return NULL;

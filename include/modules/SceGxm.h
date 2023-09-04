@@ -3,7 +3,6 @@
 
 #include <deko3d.h>
 
-void SceGxm_register(void);
 int SceGxm_init(DkDevice dk_device);
 int SceGxm_finish(void);
 

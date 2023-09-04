@@ -25,7 +25,7 @@ DECL_PROTECTED_BITSET_GET_CMP(get_memblock_info_for_addr, vita_memblock_infos, V
 			      base >= g_vita_memblock_infos[index].base &&
 			      base < (g_vita_memblock_infos[index].base + g_vita_memblock_infos[index].size))
 
-SceUID sceKernelAllocMemBlock(const char *name, SceKernelMemBlockType type, SceSize size, SceKernelAllocMemBlockOpt *opt)
+EXPORT(SceSysmem, 0xB9D5EBDE, SceUID, sceKernelAllocMemBlock, const char *name, SceKernelMemBlockType type, SceSize size, SceKernelAllocMemBlockOpt *opt)
 {
 	VitaMemBlockInfo *block;
 	uint32_t alignment;
@@ -68,7 +68,7 @@ SceUID sceKernelAllocMemBlock(const char *name, SceKernelMemBlockType type, SceS
 	return block->uid;
 }
 
-int sceKernelFreeMemBlock(SceUID uid)
+EXPORT(SceSysmem, 0xA91E15EE, int, sceKernelFreeMemBlock, SceUID uid)
 {
 	VitaMemBlockInfo *block = get_memblock_info_for_uid(uid);
 	if (!block)
@@ -81,7 +81,7 @@ int sceKernelFreeMemBlock(SceUID uid)
 	return 0;
 }
 
-int sceKernelGetMemBlockBase(SceUID uid, void **base)
+EXPORT(SceSysmem, 0xB8EF5818, int, sceKernelGetMemBlockBase, SceUID uid, void **base)
 {
 	VitaMemBlockInfo *block = get_memblock_info_for_uid(uid);
 	if (!block)
@@ -92,16 +92,7 @@ int sceKernelGetMemBlockBase(SceUID uid, void **base)
 	return 0;
 }
 
-void SceSysmem_register(void)
-{
-	static const export_entry_t exports[] = {
-		{0xB9D5EBDE, sceKernelAllocMemBlock},
-		{0xA91E15EE, sceKernelFreeMemBlock},
-		{0xB8EF5818, sceKernelGetMemBlockBase},
-	};
-
-	module_register_exports(exports, ARRAY_SIZE(exports));
-}
+DECLARE_LIBRARY(SceSysmem, 0x37fe725a);
 
 int SceSysmem_init(DkDevice dk_device)
 {

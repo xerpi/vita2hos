@@ -8,7 +8,7 @@
 
 #define MAX_TOUCH_STATES 8
 
-int sceTouchPeek(SceUInt32 port, SceTouchData *pData, SceUInt32 nBufs)
+EXPORT(SceTouch, 0xFF082DF0, int, sceTouchPeek, SceUInt32 port, SceTouchData *pData, SceUInt32 nBufs)
 {
 	HidTouchScreenState states[MAX_TOUCH_STATES];
 	int total;
@@ -38,7 +38,7 @@ int sceTouchPeek(SceUInt32 port, SceTouchData *pData, SceUInt32 nBufs)
 	return total;
 }
 
-int sceTouchGetPanelInfo(SceUInt32 port, SceTouchPanelInfo *pPanelInfo)
+EXPORT(SceTouch, 0x10A2CA25, int, sceTouchGetPanelInfo, SceUInt32 port, SceTouchPanelInfo *pPanelInfo)
 {
 	switch (port) {
 	case SCE_TOUCH_PORT_FRONT:
@@ -70,15 +70,7 @@ int sceTouchGetPanelInfo(SceUInt32 port, SceTouchPanelInfo *pPanelInfo)
 	}
 }
 
-void SceTouch_register(void)
-{
-	static const export_entry_t exports[] = {
-		{0x10A2CA25, sceTouchGetPanelInfo},
-		{0xFF082DF0, sceTouchPeek},
-	};
-
-	module_register_exports(exports, ARRAY_SIZE(exports));
-}
+DECLARE_LIBRARY(SceGxm, 0x3e4f4a81);
 
 int SceTouch_init(void)
 {

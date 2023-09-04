@@ -117,14 +117,14 @@ static int start_thread(SceUID thid, SceSize arglen, void *argp)
 	return 0;
 }
 
-SceUID sceKernelCreateThread(const char *name, SceKernelThreadEntry entry, int initPriority,
+EXPORT(SceLibKernel, 0xC5C11EE7, SceUID,  sceKernelCreateThread, const char *name, SceKernelThreadEntry entry, int initPriority,
 			     SceSize stackSize, SceUInt attr, int cpuAffinityMask,
 			     const SceKernelThreadOptParam *option)
 {
 	return create_thread(name, entry, initPriority, stackSize);
 }
 
-int sceKernelDeleteThread(SceUID thid)
+EXPORT(SceThreadmgr, 0x1BBDE3D9, int, sceKernelDeleteThread, SceUID thid)
 {
 	VitaThreadInfo *ti = get_thread_info_for_uid(thid);
 	Result res;
@@ -145,12 +145,12 @@ int sceKernelDeleteThread(SceUID thid)
 	return 0;
 }
 
-int sceKernelStartThread(SceUID thid, SceSize arglen, void *argp)
+EXPORT(SceLibKernel, 0xF08DE149, int, sceKernelStartThread, SceUID thid, SceSize arglen, void *argp)
 {
 	return start_thread(thid, arglen, argp);
 }
 
-int NORETURN sceKernelExitThread(int status)
+EXPORT(SceThreadmgrCoredumpTime, 0x0C8A38E1, int NORETURN, sceKernelExitThread, int status)
 {
 	VitaThreadInfo *ti = SceKernelThreadMgr_get_thread_info();
 
@@ -158,13 +158,13 @@ int NORETURN sceKernelExitThread(int status)
 	threadExit();
 }
 
-int NORETURN sceKernelExitDeleteThread(int status)
+EXPORT(SceThreadmgr, 0x1D17DECF, int NORETURN, sceKernelExitDeleteThread, int status)
 {
 	sceKernelExitThread(status);
 	// TODO: Delete
 }
 
-int sceKernelWaitThreadEnd(SceUID thid, int *stat, SceUInt *timeout)
+EXPORT(SceLibKernel, 0xDDB395A9, int, sceKernelWaitThreadEnd, SceUID thid, int *stat, SceUInt *timeout)
 {
 	VitaThreadInfo *ti = get_thread_info_for_uid(thid);
 	uint64_t ns;
@@ -223,26 +223,15 @@ int SceKernelThreadMgr_main_entry(SceKernelThreadEntry entry, int args, void *ar
 	return 0;
 }
 
-int sceKernelDelayThread(SceUInt delay)
+EXPORT(SceThreadmgr, 0x4B675D05, int, sceKernelDelayThread, SceUInt delay)
 {
 	svcSleepThread((s64)delay * 1000);
 	return 0;
 }
 
-void SceKernelThreadMgr_register(void)
-{
-	static const export_entry_t exports[] = {
-		{0xC5C11EE7, sceKernelCreateThread},
-		{0x1BBDE3D9, sceKernelDeleteThread},
-		{0xF08DE149, sceKernelStartThread},
-		{0x0C8A38E1, sceKernelExitThread},
-		{0x1D17DECF, sceKernelExitDeleteThread},
-		{0xDDB395A9, sceKernelWaitThreadEnd},
-		{0x4B675D05, sceKernelDelayThread},
-	};
-
-	module_register_exports(exports, ARRAY_SIZE(exports));
-}
+/* SceLibKernel declared in SceLibKernel.c */
+DECLARE_LIBRARY(SceThreadmgr, 0x859a24b1);
+DECLARE_LIBRARY(SceThreadmgrCoredumpTime, 0x5E8D0E22);
 
 int SceKernelThreadMgr_init(void)
 {

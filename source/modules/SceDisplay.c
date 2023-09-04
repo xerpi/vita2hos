@@ -193,28 +193,28 @@ next_frame_sleep:
 	threadExit();
 }
 
-int sceDisplaySetFrameBuf(const SceDisplayFrameBuf *pParam, SceDisplaySetBufSync sync)
+EXPORT(SceDisplayUser, 0x7A410B64, int, sceDisplaySetFrameBuf, const SceDisplayFrameBuf *pParam, SceDisplaySetBufSync sync)
 {
 	g_vita_conf_fb = *pParam;
 
 	return 0;
 }
 
-int sceDisplayWaitVblankStart(void)
+EXPORT(SceDisplayUser, 0x42AE6BBC, int, sceDisplayGetFrameBuf, SceDisplayFrameBuf *pParam, SceDisplaySetBufSync sync)
+{
+	*pParam = g_vita_conf_fb;
+
+	return 0;
+}
+
+EXPORT(SceDisplay, 0x5795E898, int, sceDisplayWaitVblankStart, void)
 {
 	condvarWait(&g_vblank_condvar, &g_vblank_mutex);
 	return 0;
 }
 
-void SceDisplay_register(void)
-{
-	static const export_entry_t exports[] = {
-		{0x7A410B64, sceDisplaySetFrameBuf},
-		{0x5795E898, sceDisplayWaitVblankStart},
-	};
-
-	module_register_exports(exports, ARRAY_SIZE(exports));
-}
+DECLARE_LIBRARY(SceDisplay, 0x5ed8f994);
+DECLARE_LIBRARY(SceDisplayUser, 0x4faacd11);
 
 int SceDisplay_init(DkDevice dk_device)
 {

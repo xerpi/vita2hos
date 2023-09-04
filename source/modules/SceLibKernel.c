@@ -48,7 +48,7 @@ DECL_PROTECTED_BITSET_ALLOC(opened_dir_alloc, vita_opened_dirs, VitaOpenedDir)
 DECL_PROTECTED_BITSET_RELEASE(opened_dir_release, vita_opened_dirs, VitaOpenedDir)
 DECL_PROTECTED_BITSET_GET_FOR_UID(get_opened_dir_for_fd, vita_opened_dirs, VitaOpenedDir)
 
-void *sceKernelGetTLSAddr(int key)
+EXPORT(SceLibKernel, 0xB295EB61, void *, sceKernelGetTLSAddr, int key)
 {
 	VitaThreadInfo *ti;
 
@@ -60,7 +60,7 @@ void *sceKernelGetTLSAddr(int key)
 	return NULL;
 }
 
-int sceKernelExitProcess(int res)
+EXPORT(SceLibKernel, 0x7595D9AA, int, sceKernelExitProcess, int res)
 {
 	LOG("sceKernelExitProcess called! Return value %d", res);
 
@@ -72,7 +72,7 @@ int sceKernelExitProcess(int res)
 	return 0;
 }
 
-int sceKernelCreateLwMutex(SceKernelLwMutexWork *pWork, const char *pName, unsigned int attr,
+EXPORT(SceLibKernel, 0xDA6EC8EF, int, sceKernelCreateLwMutex, SceKernelLwMutexWork *pWork, const char *pName, unsigned int attr,
 			   int initCount, const SceKernelLwMutexOptParam *pOptParam)
 {
 	Mutex *mutex = (void *)pWork;
@@ -80,18 +80,18 @@ int sceKernelCreateLwMutex(SceKernelLwMutexWork *pWork, const char *pName, unsig
 	return 0;
 }
 
-int sceKernelDeleteLwMutex(SceKernelLwMutexWork *pWork)
+EXPORT(SceLibKernel, 0x244E76D2, int, sceKernelDeleteLwMutex, SceKernelLwMutexWork *pWork)
 {
 	return 0;
 }
 
-int sceKernelLockLwMutex(SceKernelLwMutexWork *pWork, int lockCount, unsigned int *pTimeout)
+EXPORT(SceLibKernel, 0x46E7BE7B, int, sceKernelLockLwMutex, SceKernelLwMutexWork *pWork, int lockCount, unsigned int *pTimeout)
 {
 	mutexLock((void *)pWork);
 	return 0;
 }
 
-int sceKernelTryLockLwMutex(SceKernelLwMutexWork *pWork, int lockCount)
+EXPORT(SceLibKernel, 0xA6A2C915, int, sceKernelTryLockLwMutex, SceKernelLwMutexWork *pWork, int lockCount)
 {
 	if (mutexTryLock((void *)pWork))
 		return 0;
@@ -99,7 +99,7 @@ int sceKernelTryLockLwMutex(SceKernelLwMutexWork *pWork, int lockCount)
 		return SCE_KERNEL_ERROR_LW_MUTEX_FAILED_TO_OWN;
 }
 
-int sceKernelUnlockLwMutex(SceKernelLwMutexWork *pWork, int unlockCount)
+EXPORT(SceLibKernel, 0x91FA6614, int, sceKernelUnlockLwMutex, SceKernelLwMutexWork *pWork, int unlockCount)
 {
 	mutexUnlock((void *)pWork);
 	return 0;
@@ -123,7 +123,7 @@ static const char *vita_io_open_flags_to_fopen_flags(int flags)
 		return NULL;
 }
 
-SceUID sceIoOpen(const char *file, int flags, SceMode mode)
+EXPORT(SceLibKernel, 0x6C60AC61, SceUID, sceIoOpen, const char *file, int flags, SceMode mode)
 {
 	VitaOpenedFile *vfile;
 	const char *c;
@@ -153,7 +153,7 @@ SceUID sceIoOpen(const char *file, int flags, SceMode mode)
 	return vfile->uid;
 }
 
-int sceIoClose(SceUID fd)
+EXPORT(SceLibKernel, 0xF5C6F098, int, sceIoClose2, SceUID fd)
 {
 	VitaOpenedFile *vfile = get_opened_file_for_fd(fd);
 	FILE *fp;
@@ -171,7 +171,7 @@ int sceIoClose(SceUID fd)
 	return 0;
 }
 
-SceSSize sceIoRead(SceUID fd, void *buf, SceSize nbyte)
+EXPORT(SceIofilemgr, 0xFDB32293, SceSSize, sceIoRead, SceUID fd, void *buf, SceSize nbyte)
 {
 	VitaOpenedFile *vfile = get_opened_file_for_fd(fd);
 	if (!vfile)
@@ -180,7 +180,7 @@ SceSSize sceIoRead(SceUID fd, void *buf, SceSize nbyte)
 	return fread(buf, 1, nbyte, vfile->fp);
 }
 
-SceUID sceIoDopen(const char *dirname)
+EXPORT(SceLibKernel, 0xA9283DD0, SceUID, sceIoDopen, const char *dirname)
 {
 	VitaOpenedDir *vdir;
 	const char *c;
@@ -207,7 +207,7 @@ SceUID sceIoDopen(const char *dirname)
 	return vdir->uid;
 }
 
-int sceIoDclose(SceUID fd)
+EXPORT(SceIofilemgr, 0x422A221A, int, sceIoDclose, SceUID fd)
 {
 	VitaOpenedDir *vdir = get_opened_dir_for_fd(fd);
 	DIR *dir;
@@ -236,7 +236,7 @@ static inline void tm_to_sce_datetime(SceDateTime *dt, const struct tm *tm)
 	dt->microsecond = 0;
 }
 
-int sceIoDread(SceUID fd, SceIoDirent *dirent)
+EXPORT(SceLibKernel, 0x9C8B6624, int, sceIoDread, SceUID fd, SceIoDirent *dirent)
 {
 	VitaOpenedDir *vdir = get_opened_dir_for_fd(fd);
 	struct dirent *de;
@@ -284,25 +284,8 @@ int sceIoDread(SceUID fd, SceIoDirent *dirent)
 	return 1;
 }
 
-void SceLibKernel_register(void)
-{
-	static const export_entry_t exports[] = {
-		{0x7595D9AA, sceKernelExitProcess},
-		{0xB295EB61, sceKernelGetTLSAddr},
-		{0xDA6EC8EF, sceKernelCreateLwMutex},
-		{0x244E76D2, sceKernelDeleteLwMutex},
-		{0x46E7BE7B, sceKernelLockLwMutex},
-		{0x91FA6614, sceKernelUnlockLwMutex},
-		{0x6C60AC61, sceIoOpen},
-		{0xF5C6F098, sceIoClose},
-		{0xFDB32293, sceIoRead},
-		{0xA9283DD0, sceIoDopen},
-		{0x9C8B6624, sceIoDread},
-		{0x422A221A, sceIoDclose},
-	};
-
-	module_register_exports(exports, ARRAY_SIZE(exports));
-}
+DECLARE_LIBRARY(SceLibKernel, 0xcae9ace6);
+DECLARE_LIBRARY(SceIofilemgr, 0xf2ff276e);
 
 int SceLibKernel_init(void)
 {

@@ -404,7 +404,7 @@ static bool shader_dump_cb(const char *ext, const char *dump)
 #define SHADER_DUMP_CB NULL
 #endif
 
-int sceGxmInitialize(const SceGxmInitializeParams *params)
+EXPORT(SceGxm, 0xB0F1E4EC, int, sceGxmInitialize, const SceGxmInitializeParams *params)
 {
 	DkQueueMaker queue_maker;
 	uint32_t display_queue_num_entries;
@@ -462,7 +462,7 @@ int sceGxmInitialize(const SceGxmInitializeParams *params)
 	return 0;
 }
 
-int sceGxmTerminate()
+EXPORT(SceGxm, 0xB627DE66, int, sceGxmTerminate)
 {
 	g_display_queue->exit_thread = 1;
 	ueventSignal(&g_display_queue->pending_evflag);
@@ -477,7 +477,7 @@ int sceGxmTerminate()
 	return 0;
 }
 
-int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **context)
+EXPORT(SceGxm, 0xE84CE5B4, int, sceGxmCreateContext, const SceGxmContextParams *params, SceGxmContext **context)
 {
 	DkCmdBufMaker cmdbuf_maker;
 	SceGxmContext *ctx = params->hostMem;
@@ -571,7 +571,7 @@ int sceGxmCreateContext(const SceGxmContextParams *params, SceGxmContext **conte
 	return 0;
 }
 
-int sceGxmDestroyContext(SceGxmContext *context)
+EXPORT(SceGxm, 0xEDDC5FB2, int, sceGxmDestroyContext, SceGxmContext *context)
 {
 	dkQueueWaitIdle(g_render_queue);
 	dkMemBlockDestroy(context->gxm_vert_unif_block_memblock);
@@ -585,17 +585,17 @@ int sceGxmDestroyContext(SceGxmContext *context)
 	return 0;
 }
 
-void sceGxmFinish(SceGxmContext *context)
+EXPORT(SceGxm, 0x0733D8AE, void, sceGxmFinish, SceGxmContext *context)
 {
 	dkQueueWaitIdle(g_render_queue);
 }
 
-volatile unsigned int *sceGxmGetNotificationRegion(void)
+EXPORT(SceGxm, 0x8BDE825A, volatile unsigned int *, sceGxmGetNotificationRegion, void)
 {
 	return dkMemBlockGetCpuAddr(g_notification_region_memblock);
 }
 
-int sceGxmSyncObjectCreate(SceGxmSyncObject **syncObject)
+EXPORT(SceGxm, 0x6A6013E1, int, sceGxmSyncObjectCreate, SceGxmSyncObject **syncObject)
 {
 	SceGxmSyncObject *sync_object;
 
@@ -609,13 +609,13 @@ int sceGxmSyncObjectCreate(SceGxmSyncObject **syncObject)
 	return 0;
 }
 
-int sceGxmSyncObjectDestroy(SceGxmSyncObject *syncObject)
+EXPORT(SceGxm, 0x889AE88C, int, sceGxmSyncObjectDestroy, SceGxmSyncObject *syncObject)
 {
 	free(syncObject);
 	return 0;
 }
 
-int sceGxmNotificationWait(const SceGxmNotification *notification)
+EXPORT(SceGxm, 0x9F448E79, int, sceGxmNotificationWait, const SceGxmNotification *notification)
 {
 	DkVariable variable;
 	uint32_t offset = dk_memblock_cpu_addr_offset(g_notification_region_memblock,
@@ -630,7 +630,7 @@ int sceGxmNotificationWait(const SceGxmNotification *notification)
 	return 0;
 }
 
-int sceGxmShaderPatcherCreate(const SceGxmShaderPatcherParams *params,
+EXPORT(SceGxm, 0x05032658, int, sceGxmShaderPatcherCreate, const SceGxmShaderPatcherParams *params,
 			      SceGxmShaderPatcher **shaderPatcher)
 {
 	SceGxmShaderPatcher *shader_patcher;
@@ -646,14 +646,14 @@ int sceGxmShaderPatcherCreate(const SceGxmShaderPatcherParams *params,
 	return 0;
 }
 
-int sceGxmShaderPatcherDestroy(SceGxmShaderPatcher *shaderPatcher)
+EXPORT(SceGxm, 0xEAA5B100, int, sceGxmShaderPatcherDestroy, SceGxmShaderPatcher *shaderPatcher)
 {
 	free(shaderPatcher->registered_programs);
 	free(shaderPatcher);
 	return 0;
 }
 
-int sceGxmShaderPatcherRegisterProgram(SceGxmShaderPatcher *shaderPatcher,
+EXPORT(SceGxm, 0x2B528462, int, sceGxmShaderPatcherRegisterProgram, SceGxmShaderPatcher *shaderPatcher,
 				       const SceGxmProgram *programHeader,
 				       SceGxmShaderPatcherId *programId)
 {
@@ -677,7 +677,7 @@ int sceGxmShaderPatcherRegisterProgram(SceGxmShaderPatcher *shaderPatcher,
 	return 0;
 }
 
-int sceGxmShaderPatcherUnregisterProgram(SceGxmShaderPatcher *shaderPatcher,
+EXPORT(SceGxm, 0xF103AF8A, int, sceGxmShaderPatcherUnregisterProgram, SceGxmShaderPatcher *shaderPatcher,
 					 SceGxmShaderPatcherId programId)
 {
 	free(programId);
@@ -730,7 +730,7 @@ static int translate_shader(DkShader *shader, const SceGxmProgram *program, pipe
 	return 0;
 }
 
-int sceGxmShaderPatcherCreateVertexProgram(SceGxmShaderPatcher *shaderPatcher,
+EXPORT(SceGxm, 0xB7BBA6D5, int, sceGxmShaderPatcherCreateVertexProgram, SceGxmShaderPatcher *shaderPatcher,
 					   SceGxmShaderPatcherId programId,
 					   const SceGxmVertexAttribute *attributes,
 					   unsigned int attributeCount,
@@ -768,7 +768,7 @@ int sceGxmShaderPatcherCreateVertexProgram(SceGxmShaderPatcher *shaderPatcher,
 	return 0;
 }
 
-int sceGxmShaderPatcherReleaseVertexProgram(SceGxmShaderPatcher *shaderPatcher,
+EXPORT(SceGxm, 0xAC1FF2DA, int, sceGxmShaderPatcherReleaseVertexProgram, SceGxmShaderPatcher *shaderPatcher,
 					    SceGxmVertexProgram *vertexProgram)
 {
 	free(vertexProgram->attributes);
@@ -777,7 +777,7 @@ int sceGxmShaderPatcherReleaseVertexProgram(SceGxmShaderPatcher *shaderPatcher,
 	return 0;
 }
 
-int sceGxmShaderPatcherCreateFragmentProgram(SceGxmShaderPatcher *shaderPatcher,
+EXPORT(SceGxm, 0x4ED2E49D, int, sceGxmShaderPatcherCreateFragmentProgram, SceGxmShaderPatcher *shaderPatcher,
 					     SceGxmShaderPatcherId programId,
 					     SceGxmOutputRegisterFormat outputFormat,
 					     SceGxmMultisampleMode multisampleMode,
@@ -824,14 +824,14 @@ int sceGxmShaderPatcherCreateFragmentProgram(SceGxmShaderPatcher *shaderPatcher,
 	return 0;
 }
 
-int sceGxmShaderPatcherReleaseFragmentProgram(SceGxmShaderPatcher *shaderPatcher,
+EXPORT(SceGxm, 0xBE2743D1, int, sceGxmShaderPatcherReleaseFragmentProgram, SceGxmShaderPatcher *shaderPatcher,
 					      SceGxmFragmentProgram *fragmentProgram)
 {
 	free(fragmentProgram);
 	return 0;
 }
 
-const SceGxmProgram *sceGxmShaderPatcherGetProgramFromId(SceGxmShaderPatcherId programId)
+EXPORT(SceGxm, 0xA949A803, const SceGxmProgram *, sceGxmShaderPatcherGetProgramFromId, SceGxmShaderPatcherId programId)
 {
 	if (programId)
 		return programId->programHeader;
@@ -839,13 +839,13 @@ const SceGxmProgram *sceGxmShaderPatcherGetProgramFromId(SceGxmShaderPatcherId p
 	return NULL;
 }
 
-int sceGxmGetRenderTargetMemSize(const SceGxmRenderTargetParams *params, unsigned int *driverMemSize)
+EXPORT(SceGxm, 0xB291C959, int, sceGxmGetRenderTargetMemSize, const SceGxmRenderTargetParams *params, unsigned int *driverMemSize)
 {
 	*driverMemSize = sizeof(SceGxmRenderTarget);
 	return 0;
 }
 
-int sceGxmCreateRenderTarget(const SceGxmRenderTargetParams *params, SceGxmRenderTarget **renderTarget)
+EXPORT(SceGxm, 0x207AF96B, int, sceGxmCreateRenderTarget, const SceGxmRenderTargetParams *params, SceGxmRenderTarget **renderTarget)
 {
 	SceGxmRenderTarget *render_target;
 
@@ -859,13 +859,13 @@ int sceGxmCreateRenderTarget(const SceGxmRenderTargetParams *params, SceGxmRende
 	return 0;
 }
 
-int sceGxmDestroyRenderTarget(SceGxmRenderTarget *renderTarget)
+EXPORT(SceGxm, 0x0B94C50A, int, sceGxmDestroyRenderTarget, SceGxmRenderTarget *renderTarget)
 {
 	free(renderTarget);
 	return 0;
 }
 
-int sceGxmColorSurfaceInit(SceGxmColorSurface *surface, SceGxmColorFormat colorFormat,
+EXPORT(SceGxm, 0xED0F6E25, int, sceGxmColorSurfaceInit, SceGxmColorSurface *surface, SceGxmColorFormat colorFormat,
 			   SceGxmColorSurfaceType surfaceType,
 			   SceGxmColorSurfaceScaleMode scaleMode,
 			   SceGxmOutputRegisterSize outputRegisterSize,
@@ -888,7 +888,7 @@ int sceGxmColorSurfaceInit(SceGxmColorSurface *surface, SceGxmColorFormat colorF
 	return 0;
 }
 
-int sceGxmDepthStencilSurfaceInit(SceGxmDepthStencilSurface *surface,
+EXPORT(SceGxm, 0xCA9D41D1, int, sceGxmDepthStencilSurfaceInit, SceGxmDepthStencilSurface *surface,
 				  SceGxmDepthStencilFormat depthStencilFormat,
 				  SceGxmDepthStencilSurfaceType surfaceType,
 				  unsigned int strideInSamples,
@@ -911,7 +911,7 @@ int sceGxmDepthStencilSurfaceInit(SceGxmDepthStencilSurface *surface,
 	return 0;
 }
 
-void sceGxmSetFrontDepthFunc(SceGxmContext *context, SceGxmDepthFunc depthFunc)
+EXPORT(SceGxm, 0x14BD831F, void, sceGxmSetFrontDepthFunc, SceGxmContext *context, SceGxmDepthFunc depthFunc)
 {
 	context->depth_stencil_state.depthCompareOp = gxm_depth_func_to_dk_compare_op(depthFunc);
 	context->dirty.bit.depth_stencil = true;
@@ -920,7 +920,7 @@ void sceGxmSetFrontDepthFunc(SceGxmContext *context, SceGxmDepthFunc depthFunc)
 		sceGxmSetBackDepthFunc(context, depthFunc);
 }
 
-void sceGxmSetFrontDepthWriteEnable(SceGxmContext *context, SceGxmDepthWriteMode enable)
+EXPORT(SceGxm, 0xF32CBF34, void, sceGxmSetFrontDepthWriteEnable, SceGxmContext *context, SceGxmDepthWriteMode enable)
 {
 	context->depth_stencil_state.depthWriteEnable =
 		(enable == SCE_GXM_DEPTH_WRITE_ENABLED) ? 1 : 0;
@@ -930,7 +930,7 @@ void sceGxmSetFrontDepthWriteEnable(SceGxmContext *context, SceGxmDepthWriteMode
 		sceGxmSetBackDepthWriteEnable(context, enable);
 }
 
-void sceGxmSetFrontStencilRef(SceGxmContext *context, unsigned int sref)
+EXPORT(SceGxm, 0x8FA6FE44, void, sceGxmSetFrontStencilRef, SceGxmContext *context, unsigned int sref)
 {
 	context->front_stencil_state.ref = sref;
 	context->dirty.bit.front_stencil = true;
@@ -939,23 +939,23 @@ void sceGxmSetFrontStencilRef(SceGxmContext *context, unsigned int sref)
 		sceGxmSetBackStencilRef(context, sref);
 }
 
-void sceGxmSetBackDepthFunc(SceGxmContext *context, SceGxmDepthFunc depthFunc)
+EXPORT(SceGxm, 0xB042A4D2, void, sceGxmSetBackDepthFunc, SceGxmContext *context, SceGxmDepthFunc depthFunc)
 {
 	/* Unsupported */
 }
 
-void sceGxmSetBackDepthWriteEnable(SceGxmContext *context, SceGxmDepthWriteMode enable)
+EXPORT(SceGxm, 0xC18B706B, void, sceGxmSetBackDepthWriteEnable, SceGxmContext *context, SceGxmDepthWriteMode enable)
 {
 	/* Unsupported */
 }
 
-void sceGxmSetBackStencilRef(SceGxmContext *context, unsigned int sref)
+EXPORT(SceGxm, 0x866A0517, void, sceGxmSetBackStencilRef, SceGxmContext *context, unsigned int sref)
 {
 	context->back_stencil_state.ref = sref;
 	context->dirty.bit.back_stencil = true;
 }
 
-void sceGxmSetFrontStencilFunc(SceGxmContext *context, SceGxmStencilFunc func,
+EXPORT(SceGxm, 0xB8645A9A, void, sceGxmSetFrontStencilFunc, SceGxmContext *context, SceGxmStencilFunc func,
 			       SceGxmStencilOp stencilFail, SceGxmStencilOp depthFail,
 			       SceGxmStencilOp depthPass, unsigned char compareMask,
 			       unsigned char writeMask)
@@ -975,7 +975,7 @@ void sceGxmSetFrontStencilFunc(SceGxmContext *context, SceGxmStencilFunc func,
 	}
 }
 
-void sceGxmSetBackStencilFunc(SceGxmContext *context, SceGxmStencilFunc func,
+EXPORT(SceGxm, 0x1A68C8D2, void, sceGxmSetBackStencilFunc, SceGxmContext *context, SceGxmStencilFunc func,
 			      SceGxmStencilOp stencilFail, SceGxmStencilOp depthFail,
 			      SceGxmStencilOp depthPass, unsigned char compareMask,
 			      unsigned char writeMask)
@@ -1095,7 +1095,7 @@ static void ensure_shadow_ds_surface(SceGxmContext *context, uint32_t width, uin
 	context->shadow_ds_surface.size = ds_surface_size;
 }
 
-int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
+EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsigned int flags,
 		     const SceGxmRenderTarget *renderTarget, const SceGxmValidRegion *validRegion,
 		     SceGxmSyncObject *vertexSyncObject, SceGxmSyncObject *fragmentSyncObject,
 		     const SceGxmColorSurface *colorSurface,
@@ -1178,7 +1178,7 @@ int sceGxmBeginScene(SceGxmContext *context, unsigned int flags,
 	return 0;
 }
 
-int sceGxmEndScene(SceGxmContext *context, const SceGxmNotification *vertexNotification,
+EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context, const SceGxmNotification *vertexNotification,
 		   const SceGxmNotification *fragmentNotification)
 {
 	DkCmdList cmd_list;
@@ -1262,7 +1262,7 @@ static int SceGxmDisplayQueue_thread(SceSize args, void *argp)
 	return 0;
 }
 
-int sceGxmDisplayQueueAddEntry(SceGxmSyncObject *oldBuffer, SceGxmSyncObject *newBuffer, const void *callbackData)
+EXPORT(SceGxm, 0xEC5C26B5, int, sceGxmDisplayQueueAddEntry, SceGxmSyncObject *oldBuffer, SceGxmSyncObject *newBuffer, const void *callbackData)
 {
 	DisplayQueueControlBlock *queue = g_display_queue;
 
@@ -1290,7 +1290,7 @@ int sceGxmDisplayQueueAddEntry(SceGxmSyncObject *oldBuffer, SceGxmSyncObject *ne
 	return 0;
 }
 
-int sceGxmDisplayQueueFinish(void)
+EXPORT(SceGxm, 0xB98C5B0D, int, sceGxmDisplayQueueFinish, void)
 {
 	DisplayQueueControlBlock *queue = g_display_queue;
 
@@ -1300,7 +1300,7 @@ int sceGxmDisplayQueueFinish(void)
 	return 0;
 }
 
-void sceGxmSetVertexProgram(SceGxmContext *context, const SceGxmVertexProgram *vertexProgram)
+EXPORT(SceGxm, 0x31FF8ABD, void, sceGxmSetVertexProgram, SceGxmContext *context, const SceGxmVertexProgram *vertexProgram)
 {
 	DkVtxAttribState vertex_attrib_state[SCE_GXM_MAX_VERTEX_ATTRIBUTES];
 	DkVtxBufferState vertex_buffer_state[SCE_GXM_MAX_VERTEX_STREAMS];
@@ -1329,7 +1329,7 @@ void sceGxmSetVertexProgram(SceGxmContext *context, const SceGxmVertexProgram *v
 	context->dirty.bit.shaders = true;
 }
 
-void sceGxmSetFragmentProgram(SceGxmContext *context, const SceGxmFragmentProgram *fragmentProgram)
+EXPORT(SceGxm, 0xAD2F48D9, void, sceGxmSetFragmentProgram, SceGxmContext *context, const SceGxmFragmentProgram *fragmentProgram)
 {
 	uint32_t mask;
 
@@ -1345,14 +1345,14 @@ void sceGxmSetFragmentProgram(SceGxmContext *context, const SceGxmFragmentProgra
 	context->dirty.bit.shaders = true;
 }
 
-int sceGxmSetFragmentTexture(SceGxmContext *context, unsigned int textureIndex, const SceGxmTexture *texture)
+EXPORT(SceGxm, 0x29C34DF5, int, sceGxmSetFragmentTexture, SceGxmContext *context, unsigned int textureIndex, const SceGxmTexture *texture)
 {
 	context->fragment_textures[textureIndex] = *(SceGxmTextureInner *)texture;
 	context->dirty.bit.fragment_textures = true;
 	return 0;
 }
 
-int sceGxmSetVertexStream(SceGxmContext *context, unsigned int streamIndex, const void *streamData)
+EXPORT(SceGxm, 0x895DF2E9, int, sceGxmSetVertexStream, SceGxmContext *context, unsigned int streamIndex, const void *streamData)
 {
 	VitaMemBlockInfo *stream_block;
 	uint32_t stream_offset;
@@ -1369,7 +1369,7 @@ int sceGxmSetVertexStream(SceGxmContext *context, unsigned int streamIndex, cons
 	return 0;
 }
 
-int sceGxmReserveVertexDefaultUniformBuffer(SceGxmContext *context, void **uniformBuffer)
+EXPORT(SceGxm, 0x97118913, int, sceGxmReserveVertexDefaultUniformBuffer, SceGxmContext *context, void **uniformBuffer)
 {
 	DkBufExtents buf_extents;
 	uint32_t default_uniform_buffer_count;
@@ -1399,7 +1399,7 @@ int sceGxmReserveVertexDefaultUniformBuffer(SceGxmContext *context, void **unifo
 	return 0;
 }
 
-int sceGxmReserveFragmentDefaultUniformBuffer(SceGxmContext *context, void **uniformBuffer)
+EXPORT(SceGxm, 0x7B1FABB6, int, sceGxmReserveFragmentDefaultUniformBuffer, SceGxmContext *context, void **uniformBuffer)
 {
 	DkBufExtents buf_extents;
 	uint32_t default_uniform_buffer_count;
@@ -1429,7 +1429,7 @@ int sceGxmReserveFragmentDefaultUniformBuffer(SceGxmContext *context, void **uni
 	return 0;
 }
 
-int sceGxmSetUniformDataF(void *uniformBuffer, const SceGxmProgramParameter *parameter,
+EXPORT(SceGxm, 0x65DD0C84, int, sceGxmSetUniformDataF, void *uniformBuffer, const SceGxmProgramParameter *parameter,
 			  unsigned int componentOffset, unsigned int componentCount,
 			  const float *sourceData)
 {
@@ -1478,7 +1478,7 @@ static int init_texture_base(SceGxmTextureInner *texture, const void *data, SceG
 	return 0;
 }
 
-int sceGxmTextureInitLinear(SceGxmTexture *texture, const void *data,
+EXPORT(SceGxm, 0x4811AECB, int, sceGxmTextureInitLinear, SceGxmTexture *texture, const void *data,
 			    SceGxmTextureFormat texFormat,
 			    unsigned int width, unsigned int height,
 			    unsigned int mipCount)
@@ -1491,27 +1491,27 @@ int sceGxmTextureInitLinear(SceGxmTexture *texture, const void *data,
 				 SCE_GXM_TEXTURE_LINEAR);
 }
 
-void *sceGxmTextureGetData(const SceGxmTexture *texture)
+EXPORT(SceGxm, 0x5341BD46, void *, sceGxmTextureGetData, const SceGxmTexture *texture)
 {
 	return (void *)(((SceGxmTextureInner *)texture)->data_addr << 2);
 }
 
-SceGxmTextureFormat sceGxmTextureGetFormat(const SceGxmTexture *texture)
+EXPORT(SceGxm, 0xE868D2B3, SceGxmTextureFormat, sceGxmTextureGetFormat, const SceGxmTexture *texture)
 {
 	return gxm_texture_get_format((SceGxmTextureInner *)texture);
 }
 
-SceGxmTextureGammaMode sceGxmTextureGetGammaMode(const SceGxmTexture *texture)
+EXPORT(SceGxm, 0xF23FCE81, SceGxmTextureGammaMode, sceGxmTextureGetGammaMode, const SceGxmTexture *texture)
 {
 	return ((SceGxmTextureInner *)texture)->gamma_mode << 27;
 }
 
-uint32_t sceGxmTextureGetHeight(const SceGxmTexture *texture)
+EXPORT(SceGxm, 0x5420A086, uint32_t, sceGxmTextureGetHeight, const SceGxmTexture *texture)
 {
 	return gxm_texture_get_height((SceGxmTextureInner *)texture);
 }
 
-uint32_t sceGxmTextureGetLodBias(const SceGxmTexture *texture)
+EXPORT(SceGxm, 0x2DE55DA5, uint32_t, sceGxmTextureGetLodBias, const SceGxmTexture *texture)
 {
 	SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
 
@@ -1524,7 +1524,7 @@ uint32_t sceGxmTextureGetLodBias(const SceGxmTexture *texture)
 	return inner->lod_bias;
 }
 
-uint32_t sceGxmTextureGetLodMin(const SceGxmTexture *texture)
+EXPORT(SceGxm, 0xBE524A2C, uint32_t, sceGxmTextureGetLodMin, const SceGxmTexture *texture)
 {
 	SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
 
@@ -1537,12 +1537,12 @@ uint32_t sceGxmTextureGetLodMin(const SceGxmTexture *texture)
 	return inner->lod_min0 | (inner->lod_min1 << 2);
 }
 
-SceGxmTextureFilter sceGxmTextureGetMagFilter(const SceGxmTexture *texture)
+EXPORT(SceGxm, 0xAE7FBB51, SceGxmTextureFilter, sceGxmTextureGetMagFilter, const SceGxmTexture *texture)
 {
 	return ((SceGxmTextureInner *)texture)->mag_filter;
 }
 
-SceGxmTextureFilter sceGxmTextureGetMinFilter(const SceGxmTexture *texture)
+EXPORT(SceGxm, 0x920666C6, SceGxmTextureFilter, sceGxmTextureGetMinFilter, const SceGxmTexture *texture)
 {
 	SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
 
@@ -1551,7 +1551,7 @@ SceGxmTextureFilter sceGxmTextureGetMinFilter(const SceGxmTexture *texture)
 	return inner->min_filter;
 }
 
-SceGxmTextureMipFilter sceGxmTextureGetMipFilter(const SceGxmTexture *texture)
+EXPORT(SceGxm, 0xCE94CA15, SceGxmTextureMipFilter, sceGxmTextureGetMipFilter, const SceGxmTexture *texture)
 {
 	SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
 
@@ -1561,7 +1561,7 @@ SceGxmTextureMipFilter sceGxmTextureGetMipFilter(const SceGxmTexture *texture)
 				   SCE_GXM_TEXTURE_MIP_FILTER_DISABLED;
 }
 
-uint32_t sceGxmTextureGetMipmapCount(const SceGxmTexture *texture)
+EXPORT(SceGxm, 0xF7B7B1E4, uint32_t, sceGxmTextureGetMipmapCount, const SceGxmTexture *texture)
 {
 	SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
 
@@ -1570,24 +1570,24 @@ uint32_t sceGxmTextureGetMipmapCount(const SceGxmTexture *texture)
 	return (inner->mip_count + 1) & 0xf;
 }
 
-uint32_t sceGxmTextureGetMipmapCountUnsafe(const SceGxmTexture *texture)
+EXPORT(SceGxm, 0x4CC42929, uint32_t, sceGxmTextureGetMipmapCountUnsafe, const SceGxmTexture *texture)
 {
 	return (((SceGxmTextureInner *)texture)->mip_count + 1) & 0xf;
 }
 
-int sceGxmTextureGetNormalizeMode(const SceGxmTexture *texture)
+EXPORT(SceGxm, 0x512BB86C, int, sceGxmTextureGetNormalizeMode, const SceGxmTexture *texture)
 {
 	return ((SceGxmTextureInner *)texture)->normalize_mode << 31;
 }
 
-void *sceGxmTextureGetPalette(const SceGxmTexture *texture)
+EXPORT(SceGxm, 0x0D189C30, void *, sceGxmTextureGetPalette, const SceGxmTexture *texture)
 {
 	SceGxmTextureBaseFormat base_format = gxm_texture_get_base_format(sceGxmTextureGetFormat(texture));
 
 	return gxm_base_format_is_paletted_format(base_format) ? (void *)(texture->palette_addr << 6) : NULL;
 }
 
-uint32_t sceGxmTextureGetStride(const SceGxmTexture *texture)
+EXPORT(SceGxm, 0xB0BD52F3, uint32_t, sceGxmTextureGetStride, const SceGxmTexture *texture)
 {
 	SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
 
@@ -1596,17 +1596,17 @@ uint32_t sceGxmTextureGetStride(const SceGxmTexture *texture)
 	return gxm_texture_get_stride_in_bytes(inner);
 }
 
-SceGxmTextureType sceGxmTextureGetType(const SceGxmTexture *texture)
+EXPORT(SceGxm, 0xF65D4917, SceGxmTextureType, sceGxmTextureGetType, const SceGxmTexture *texture)
 {
 	return gxm_texture_get_type((SceGxmTextureInner *)texture);
 }
 
-SceGxmTextureAddrMode sceGxmTextureGetUAddrMode(const SceGxmTexture *texture)
+EXPORT(SceGxm, 0x2AE22788, SceGxmTextureAddrMode, sceGxmTextureGetUAddrMode, const SceGxmTexture *texture)
 {
 	return ((SceGxmTextureInner *)texture)->uaddr_mode;
 }
 
-int sceGxmTextureGetUAddrModeSafe(const SceGxmTexture *texture)
+EXPORT(SceGxm, 0xC037DA83, int, sceGxmTextureGetUAddrModeSafe, const SceGxmTexture *texture)
 {
 	SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
 
@@ -1615,12 +1615,12 @@ int sceGxmTextureGetUAddrModeSafe(const SceGxmTexture *texture)
 	return inner->uaddr_mode;
 }
 
-SceGxmTextureAddrMode sceGxmTextureGetVAddrMode(const SceGxmTexture *texture)
+EXPORT(SceGxm, 0x46136CA9, SceGxmTextureAddrMode, sceGxmTextureGetVAddrMode, const SceGxmTexture *texture)
 {
 	return ((SceGxmTextureInner *)texture)->vaddr_mode;
 }
 
-int sceGxmTextureGetVAddrModeSafe(const SceGxmTexture *texture)
+EXPORT(SceGxm, 0xD2F0D9C1, int, sceGxmTextureGetVAddrModeSafe, const SceGxmTexture *texture)
 {
 	SceGxmTextureInner *inner = (SceGxmTextureInner *)texture;
 
@@ -1629,12 +1629,12 @@ int sceGxmTextureGetVAddrModeSafe(const SceGxmTexture *texture)
 	return inner->vaddr_mode;
 }
 
-uint32_t sceGxmTextureGetWidth(const SceGxmTexture *texture)
+EXPORT(SceGxm, 0x126A3EB3, uint32_t, sceGxmTextureGetWidth, const SceGxmTexture *texture)
 {
 	return gxm_texture_get_width((SceGxmTextureInner *)texture);
 }
 
-const SceGxmProgramParameter *sceGxmProgramFindParameterByName(const SceGxmProgram *program, const char *name)
+EXPORT(SceGxm, 0x277794C4, const SceGxmProgramParameter *, sceGxmProgramFindParameterByName, const SceGxmProgram *program, const char *name)
 {
 	const uint8_t *parameter_bytes;
 	const char *parameter_name;
@@ -1749,7 +1749,7 @@ static void context_flush_dirty_state(SceGxmContext *context)
 	}
 }
 
-int sceGxmDraw(SceGxmContext *context, SceGxmPrimitiveType primType, SceGxmIndexFormat indexType,
+EXPORT(SceGxm, 0xBC059AFC, int, sceGxmDraw, SceGxmContext *context, SceGxmPrimitiveType primType, SceGxmIndexFormat indexType,
 	       const void *indexData, unsigned int indexCount)
 {
 	VitaMemBlockInfo *index_block;
@@ -1771,7 +1771,7 @@ int sceGxmDraw(SceGxmContext *context, SceGxmPrimitiveType primType, SceGxmIndex
 	return 0;
 }
 
-int sceGxmMapMemory(void *base, SceSize size, SceGxmMemoryAttribFlags attr)
+EXPORT(SceGxm, 0xC61E34FC, int, sceGxmMapMemory, void *base, SceSize size, SceGxmMemoryAttribFlags attr)
 {
 	VitaMemBlockInfo *block;
 
@@ -1784,7 +1784,7 @@ int sceGxmMapMemory(void *base, SceSize size, SceGxmMemoryAttribFlags attr)
 	return 0;
 }
 
-int sceGxmUnmapMemory(void *base)
+EXPORT(SceGxm, 0x828C68E8, int, sceGxmUnmapMemory, void *base)
 {
 	VitaMemBlockInfo *block = SceSysmem_get_vita_memblock_info_for_addr(base);
 	if (!block)
@@ -1793,104 +1793,27 @@ int sceGxmUnmapMemory(void *base)
 	return 0;
 }
 
-int sceGxmMapVertexUsseMemory(void *base, SceSize size, unsigned int *offset)
+EXPORT(SceGxm, 0xFA437510, int, sceGxmMapVertexUsseMemory, void *base, SceSize size, unsigned int *offset)
 {
 	return 0;
 }
 
-int sceGxmUnmapVertexUsseMemory(void *base)
+EXPORT(SceGxm, 0x099134F5, int, sceGxmUnmapVertexUsseMemory, void *base)
 {
 	return 0;
 }
 
-int sceGxmMapFragmentUsseMemory(void *base, SceSize size, unsigned int *offset)
+EXPORT(SceGxm, 0x008402C6, int, sceGxmMapFragmentUsseMemory, void *base, SceSize size, unsigned int *offset)
 {
 	return 0;
 }
 
-int sceGxmUnmapFragmentUsseMemory(void *base)
+EXPORT(SceGxm, 0x80CCEDBB, int, sceGxmUnmapFragmentUsseMemor, void *base)
 {
 	return 0;
 }
 
-void SceGxm_register(void)
-{
-	static const export_entry_t exports[] = {
-		{0xB0F1E4EC, sceGxmInitialize},
-		{0xB627DE66, sceGxmTerminate},
-		{0xE84CE5B4, sceGxmCreateContext},
-		{0xEDDC5FB2, sceGxmDestroyContext},
-		{0x0733D8AE, sceGxmFinish},
-		{0x8BDE825A, sceGxmGetNotificationRegion},
-		{0x9F448E79, sceGxmNotificationWait},
-		{0x6A6013E1, sceGxmSyncObjectCreate},
-		{0x889AE88C, sceGxmSyncObjectDestroy},
-		{0x05032658, sceGxmShaderPatcherCreate},
-		{0xEAA5B100, sceGxmShaderPatcherDestroy},
-		{0x2B528462, sceGxmShaderPatcherRegisterProgram},
-		{0xF103AF8A, sceGxmShaderPatcherUnregisterProgram},
-		{0xB7BBA6D5, sceGxmShaderPatcherCreateVertexProgram},
-		{0xAC1FF2DA, sceGxmShaderPatcherReleaseVertexProgram},
-		{0x4ED2E49D, sceGxmShaderPatcherCreateFragmentProgram},
-		{0xBE2743D1, sceGxmShaderPatcherReleaseFragmentProgram},
-		{0xA949A803, sceGxmShaderPatcherGetProgramFromId},
-		{0xB291C959, sceGxmGetRenderTargetMemSize},
-		{0x207AF96B, sceGxmCreateRenderTarget},
-		{0x0B94C50A, sceGxmDestroyRenderTarget},
-		{0xED0F6E25, sceGxmColorSurfaceInit},
-		{0xCA9D41D1, sceGxmDepthStencilSurfaceInit},
-		{0x14BD831F, sceGxmSetFrontDepthFunc},
-		{0xF32CBF34, sceGxmSetFrontDepthWriteEnable},
-		{0x8FA6FE44, sceGxmSetFrontStencilRef},
-		{0xB042A4D2, sceGxmSetBackDepthFunc},
-		{0xC18B706B, sceGxmSetBackDepthWriteEnable},
-		{0x866A0517, sceGxmSetBackStencilRef},
-		{0xB8645A9A, sceGxmSetFrontStencilFunc},
-		{0x1A68C8D2, sceGxmSetBackStencilFunc},
-		{0x8734FF4E, sceGxmBeginScene},
-		{0xFE300E2F, sceGxmEndScene},
-		{0xEC5C26B5, sceGxmDisplayQueueAddEntry},
-		{0xB98C5B0D, sceGxmDisplayQueueFinish},
-		{0x31FF8ABD, sceGxmSetVertexProgram},
-		{0xAD2F48D9, sceGxmSetFragmentProgram},
-		{0x29C34DF5, sceGxmSetFragmentTexture},
-		{0x895DF2E9, sceGxmSetVertexStream},
-		{0x97118913, sceGxmReserveVertexDefaultUniformBuffer},
-		{0x7B1FABB6, sceGxmReserveFragmentDefaultUniformBuffer},
-		{0x65DD0C84, sceGxmSetUniformDataF},
-		{0x4811AECB, sceGxmTextureInitLinear},
-		{0x5341BD46, sceGxmTextureGetData},
-		{0xE868D2B3, sceGxmTextureGetFormat},
-		{0xF23FCE81, sceGxmTextureGetGammaMode},
-		{0x5420A086, sceGxmTextureGetHeight},
-		{0x2DE55DA5, sceGxmTextureGetLodBias},
-		{0xBE524A2C, sceGxmTextureGetLodMin},
-		{0xAE7FBB51, sceGxmTextureGetMagFilter},
-		{0x920666C6, sceGxmTextureGetMinFilter},
-		{0xCE94CA15, sceGxmTextureGetMipFilter},
-		{0xF7B7B1E4, sceGxmTextureGetMipmapCount},
-		{0x4CC42929, sceGxmTextureGetMipmapCountUnsafe},
-		{0x512BB86C, sceGxmTextureGetNormalizeMode},
-		{0x0D189C30, sceGxmTextureGetPalette},
-		{0xB0BD52F3, sceGxmTextureGetStride},
-		{0xF65D4917, sceGxmTextureGetType},
-		{0x2AE22788, sceGxmTextureGetUAddrMode},
-		{0xC037DA83, sceGxmTextureGetUAddrModeSafe},
-		{0x46136CA9, sceGxmTextureGetVAddrMode},
-		{0xD2F0D9C1, sceGxmTextureGetVAddrModeSafe},
-		{0x126A3EB3, sceGxmTextureGetWidth},
-		{0x277794C4, sceGxmProgramFindParameterByName},
-		{0xBC059AFC, sceGxmDraw},
-		{0xC61E34FC, sceGxmMapMemory},
-		{0x828C68E8, sceGxmUnmapMemory},
-		{0xFA437510, sceGxmMapVertexUsseMemory},
-		{0x099134F5, sceGxmUnmapVertexUsseMemory},
-		{0x008402C6, sceGxmMapFragmentUsseMemory},
-		{0x80CCEDBB, sceGxmUnmapFragmentUsseMemory},
-	};
-
-	module_register_exports(exports, ARRAY_SIZE(exports));
-}
+DECLARE_LIBRARY(SceGxm, 0xf76b66bd);
 
 int SceGxm_init(DkDevice dk_device)
 {

@@ -8,7 +8,7 @@
 
 static PadState g_pad;
 
-int sceCtrlPeekBufferPositive(int port, SceCtrlData *pad_data, int count)
+EXPORT(SceCtrl, 0xA9C3CED6, int, sceCtrlPeekBufferPositive, int port, SceCtrlData *pad_data, int count)
 {
 	u64 buttons;
 	HidAnalogStickState analog_stick_l, analog_stick_r;
@@ -61,14 +61,7 @@ int sceCtrlPeekBufferPositive(int port, SceCtrlData *pad_data, int count)
 	return 0;
 }
 
-void SceCtrl_register(void)
-{
-	static const export_entry_t exports[] = {
-		{0xA9C3CED6, sceCtrlPeekBufferPositive},
-	};
-
-	module_register_exports(exports, ARRAY_SIZE(exports));
-}
+DECLARE_LIBRARY(SceCtrl, 0xD197E3C7);
 
 int SceCtrl_init(void)
 {

@@ -15,7 +15,6 @@ typedef struct {
 	void **vita_tls;
 } VitaThreadInfo;
 
-void SceKernelThreadMgr_register(void);
 int SceKernelThreadMgr_init(void);
 int SceKernelThreadMgr_finish(void);
 VitaThreadInfo *SceKernelThreadMgr_get_thread_info(void);
