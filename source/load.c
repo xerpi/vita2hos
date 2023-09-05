@@ -1,13 +1,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <elf.h>
+#include <miniz/miniz.h>
 #include <switch.h>
 #include <psp2/kernel/error.h>
 #include "arm-encode.h"
 #include "load.h"
 #include "log.h"
 #include "module.h"
-#include "miniz.h"
 #include "sce-elf.h"
 #include "self.h"
 #include "util.h"
@@ -37,6 +37,8 @@ typedef struct {
 	bool needs_free;
 } segment_info_t;
 
+static int load_vpk(Jit *jit, const void *data, uint32_t size, void **entry);
+static int load_executable(Jit *jit, const uint8_t *data, void **entry);
 static int load_elf(Jit *jit, const void *data, void **entry);
 static int load_self(Jit *jit, const void *data, void **entry);
 static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_info_t *segments, int num_segments);
@@ -102,11 +104,10 @@ static int elf_get_sce_module_info(Elf32_Addr e_entry, const segment_info_t *seg
 	return index;
 }
 
-int load_exe(Jit *jit, const char *filename, void **entry)
+int load_file(Jit *jit, const char *filename, void **entry)
 {
 	void *data;
 	uint32_t size;
-	uint8_t *magic;
 	int ret = 0;
 
 	LOG("Opening '%s' for reading.", filename);
@@ -115,31 +116,73 @@ int load_exe(Jit *jit, const char *filename, void **entry)
 		return -1;
 	}
 
-	magic = (uint8_t *)data;
-
-	if (magic[0] == ELFMAG0) {
-		if (magic[1] == ELFMAG1 && magic[2] == ELFMAG2 && magic[3] == ELFMAG3) {
-			LOG("Found an ELF, loading.");
-			if (load_elf(jit, data, entry) < 0) {
-				LOG("Cannot load ELF.");
-				ret = -1;
-			}
+	if (load_executable(jit, data, entry) < 0) {
+		/* Fallback to vpk (zip file) */
+		if (load_vpk(jit, data, size, entry) < 0) {
+			LOG("Unsupported file.");
+			ret = -1;
 		}
-	} else if (magic[0] == SCEMAG0) {
-		if (magic[1] == SCEMAG1 && magic[2] == SCEMAG2 && magic[3] == SCEMAG3) {
-			LOG("Found a SELF, loading.");
-			if (load_self(jit, data, entry) < 0) {
-				LOG("Cannot load SELF.");
-				ret = -1;
-			}
-		}
-	} else {
-		LOG("Invalid magic.");
-		ret = -1;
 	}
 
 	free(data);
 	return ret;
+}
+
+static int load_vpk(Jit *jit, const void *data, uint32_t size, void **entry)
+{
+	mz_bool status;
+	mz_zip_archive zip_archive;
+	size_t uncompressed_size;
+	void *eboot_bin;
+	int ret;
+
+	mz_zip_zero_struct(&zip_archive);
+
+	status = mz_zip_reader_init_mem(&zip_archive, data, size, 0);
+	if (status == MZ_FALSE)
+		return -1;
+
+	LOG("Found an ZIP file (VPK), extracting eboot.bin.");
+
+	eboot_bin = mz_zip_reader_extract_file_to_heap(&zip_archive, "eboot.bin", &uncompressed_size, 0);
+	if (!eboot_bin) {
+		mz_zip_reader_end(&zip_archive);
+		return -1;
+	}
+
+	ret = load_executable(jit, eboot_bin, entry);
+
+	mz_free(eboot_bin);
+	mz_zip_reader_end(&zip_archive);
+
+	return ret;
+}
+
+
+static int load_executable(Jit *jit, const uint8_t *data, void **entry)
+{
+	if (data[0] == ELFMAG0) {
+		if (data[1] == ELFMAG1 && data[2] == ELFMAG2 && data[3] == ELFMAG3) {
+			LOG("Found an ELF, loading.");
+			if (load_elf(jit, data, entry) < 0) {
+				LOG("Cannot load ELF.");
+				return -1;
+			}
+		}
+	} else if (data[0] == SCEMAG0) {
+		if (data[1] == SCEMAG1 && data[2] == SCEMAG2 && data[3] == SCEMAG3) {
+			LOG("Found a SELF, loading.");
+			if (load_self(jit, data, entry) < 0) {
+				LOG("Cannot load SELF.");
+				return -1;
+			}
+		}
+	} else {
+		/* Unsupported executable */
+		return -1;
+	}
+
+	return 0;
 }
 
 static int load_self(Jit *jit, const void *data, void **entry)

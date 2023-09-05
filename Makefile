@@ -80,7 +80,7 @@ ASFLAGS	:=	-g $(ARCH)
 LDFLAGS	=	-specs=$(DEVKITPRO)/libnx32/switch32.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
 LIBS	:= -lSPIRV -lspirv-cross-c -lspirv-cross-core -lspirv-cross-cpp -lspirv-cross-glsl \
-	   -lspirv-cross-reflect -lspirv-cross-util -lglslang -lfmt -luam -ldeko3dd -lnx -lm
+	   -lspirv-cross-reflect -lspirv-cross-util -lglslang -lfmt -luam -lminiz -ldeko3dd -lnx -lm
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing

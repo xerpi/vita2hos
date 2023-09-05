@@ -119,7 +119,7 @@ int main(int argc, char *argv[])
 
 	create_vita2hos_paths();
 
-	ret = load_exe(&jit, VITA2HOS_EXE_FILE, &entry);
+	ret = load_file(&jit, VITA2HOS_EXE_FILE, &entry);
 	if (ret == 0) {
 		LOG("Launching PlayStation Vita executable!");
 

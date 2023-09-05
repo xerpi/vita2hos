@@ -3,6 +3,6 @@
 
 #include <switch.h>
 
-int load_exe(Jit *jit, const char *filename, void **entry);
+int load_file(Jit *jit, const char *filename, void **entry);
 
 #endif
