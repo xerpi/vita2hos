@@ -312,6 +312,21 @@ EXPORT(SceLibKernel, 0x9C8B6624, int, sceIoDread, SceUID fd, SceIoDirent *dirent
 	return 1;
 }
 
+EXPORT(SceLibKernel, 0x632980D7, void *, sceClibMemset, void *dst, int ch, SceSize len)
+{
+	return memset(dst, ch, len);
+}
+
+EXPORT(SceLibKernel, 0x14E9DBD7, void *, sceClibMemcpy, void *dst, const void *src, SceSize len)
+{
+	return memcpy(dst, src, len);
+}
+
+EXPORT(SceLibKernel, 0x736753C8, void *, sceClibMemmove, void *dst, const void *src, SceSize len)
+{
+	return memmove(dst, src, len);
+}
+
 EXPORT(SceLibKernel, 0xFA26BC62, int, sceClibPrintf, const char *fmt, ...)
 {
 	va_list args;
