@@ -229,6 +229,19 @@ EXPORT(SceThreadmgr, 0x4B675D05, int, sceKernelDelayThread, SceUInt delay)
 	return 0;
 }
 
+EXPORT(SceThreadmgr, 0xBACA6891, void *, sceKernelGetThreadTLSAddr, SceUID thid, int key)
+{
+	VitaThreadInfo *ti = get_thread_info_for_uid(thid);
+
+	if (!ti)
+		return NULL;
+
+	if (key >= 0 && key <= 0x100)
+		return &ti->vita_tls[key];
+
+	return NULL;
+}
+
 /* SceLibKernel declared in SceLibKernel.c */
 DECLARE_LIBRARY(SceThreadmgr, 0x859a24b1);
 DECLARE_LIBRARY(SceThreadmgrCoredumpTime, 0x5E8D0E22);

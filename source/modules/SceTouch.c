@@ -70,7 +70,7 @@ EXPORT(SceTouch, 0x10A2CA25, int, sceTouchGetPanelInfo, SceUInt32 port, SceTouch
 	}
 }
 
-DECLARE_LIBRARY(SceGxm, 0x3e4f4a81);
+DECLARE_LIBRARY(SceTouch, 0x3e4f4a81);
 
 int SceTouch_init(void)
 {

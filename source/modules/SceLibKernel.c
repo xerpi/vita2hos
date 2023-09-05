@@ -153,7 +153,7 @@ EXPORT(SceLibKernel, 0x6C60AC61, SceUID, sceIoOpen, const char *file, int flags,
 	return vfile->uid;
 }
 
-EXPORT(SceLibKernel, 0xF5C6F098, int, sceIoClose2, SceUID fd)
+EXPORT(SceIofilemgr, 0xC70B8886, int, sceIoClose, SceUID fd)
 {
 	VitaOpenedFile *vfile = get_opened_file_for_fd(fd);
 	FILE *fp;
