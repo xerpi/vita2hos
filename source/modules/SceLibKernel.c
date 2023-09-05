@@ -1,3 +1,4 @@
+#include <stdarg.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -180,6 +181,33 @@ EXPORT(SceIofilemgr, 0xFDB32293, SceSSize, sceIoRead, SceUID fd, void *buf, SceS
 	return fread(buf, 1, nbyte, vfile->fp);
 }
 
+EXPORT(SceIofilemgr, 0x34EFD876, SceSSize, sceIoWrite, SceUID fd, const void *buf, SceSize nbyte)
+{
+	VitaOpenedFile *vfile = get_opened_file_for_fd(fd);
+	if (!vfile)
+		return SCE_ERROR_ERRNO_EBADF;
+
+	return fwrite(buf, 1, nbyte, vfile->fp);
+}
+
+EXPORT(SceIofilemgr, 0x49252B9B, long, sceIoLseek32, SceUID fd, long offset, int whence)
+{
+	VitaOpenedFile *vfile = get_opened_file_for_fd(fd);
+	if (!vfile)
+		return SCE_ERROR_ERRNO_EBADF;
+
+	return fseek(vfile->fp, offset, whence);
+}
+
+EXPORT(SceIofilemgr, 0x16512F59, int, sceIoSyncByFd, SceUID fd, int flag)
+{
+	VitaOpenedFile *vfile = get_opened_file_for_fd(fd);
+	if (!vfile)
+		return SCE_ERROR_ERRNO_EBADF;
+
+	return fflush(vfile->fp);
+}
+
 EXPORT(SceLibKernel, 0xA9283DD0, SceUID, sceIoDopen, const char *dirname)
 {
 	VitaOpenedDir *vdir;
@@ -282,6 +310,23 @@ EXPORT(SceLibKernel, 0x9C8B6624, int, sceIoDread, SceUID fd, SceIoDirent *dirent
 	dirent->d_private = NULL;
 
 	return 1;
+}
+
+EXPORT(SceLibKernel, 0xFA26BC62, int, sceClibPrintf, const char *fmt, ...)
+{
+	va_list args;
+	int ret;
+
+	va_start(args, fmt);
+	ret = vprintf(fmt, args);
+	va_end(args);
+
+	return ret;
+}
+
+EXPORT(SceLibKernel, 0x0FB972F9, int, sceKernelGetThreadId)
+{
+	return SceKernelThreadMgr_get_thread_info()->uid;
 }
 
 DECLARE_LIBRARY(SceLibKernel, 0xcae9ace6);
