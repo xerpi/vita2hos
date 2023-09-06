@@ -292,7 +292,7 @@ struct GXMRenderFragUniformBlock {
 	float front_disabled;
 	float writing_mask;
 	float use_raw_image;
-	int32_t res_multiplier;
+	float res_multiplier;
 };
 
 /* Global state */
@@ -1369,6 +1369,11 @@ EXPORT(SceGxm, 0x895DF2E9, int, sceGxmSetVertexStream, SceGxmContext *context, u
 	return 0;
 }
 
+EXPORT(SceGxm, 0x8FA3F9C3, unsigned int, sceGxmProgramGetDefaultUniformBufferSize, const SceGxmProgram *program)
+{
+	return program->default_uniform_buffer_count * sizeof(uint32_t);
+}
+
 EXPORT(SceGxm, 0x97118913, int, sceGxmReserveVertexDefaultUniformBuffer, SceGxmContext *context, void **uniformBuffer)
 {
 	DkBufExtents buf_extents;
@@ -1430,19 +1435,44 @@ EXPORT(SceGxm, 0x7B1FABB6, int, sceGxmReserveFragmentDefaultUniformBuffer, SceGx
 }
 
 EXPORT(SceGxm, 0x65DD0C84, int, sceGxmSetUniformDataF, void *uniformBuffer, const SceGxmProgramParameter *parameter,
-			  unsigned int componentOffset, unsigned int componentCount,
-			  const float *sourceData)
+			  unsigned int componentOffset, unsigned int componentCount, const float *sourceData)
 {
-	uint32_t component_size, dst_offset, copy_size;
+	const bool is_float = (parameter->type == SCE_GXM_PARAMETER_TYPE_F16) || (parameter->type == SCE_GXM_PARAMETER_TYPE_F32);
 
 	if (!uniformBuffer || !sourceData)
 		return SCE_GXM_ERROR_INVALID_POINTER;
 
-	component_size = gxm_parameter_type_size(parameter->type);
-	dst_offset = component_size * (parameter->resource_index + componentOffset);
-	copy_size = component_size * componentCount;
+	uint32_t alignment;
+	if (is_float && (parameter->array_size > 1) && (parameter->component_count > 1))
+		alignment = 8;
+	else
+		alignment = 4;
 
-	memcpy((char *)uniformBuffer + dst_offset, sourceData, copy_size);
+	uint32_t scalar_size = gxm_parameter_type_size(parameter->type);
+	uint32_t vector_size = scalar_size * parameter->component_count;
+	uint32_t vector_index = componentOffset / parameter->component_count;
+	uint32_t scalar_index = componentOffset % parameter->component_count;
+	uint32_t vector_mod_align = vector_size % alignment;
+	uint32_t vector_padding_bytes = vector_mod_align ? alignment - vector_mod_align : 0;
+
+	uint32_t offset = parameter->resource_index * sizeof(uint32_t) +
+					  vector_index * (vector_size + vector_padding_bytes) +
+					  scalar_index * scalar_size;
+
+	/* Only floats are supported for now */
+	assert(parameter->type == SCE_GXM_PARAMETER_TYPE_F32);
+
+	uint32_t scalars_to_copy = MIN2(parameter->component_count - scalar_index, componentCount);
+
+	while (componentCount > 0) {
+		memcpy((char *)uniformBuffer + offset, sourceData, scalars_to_copy * scalar_size);
+
+		offset += scalars_to_copy * scalar_size + vector_padding_bytes;
+		sourceData += scalars_to_copy;
+
+		componentCount -= scalars_to_copy;
+		scalars_to_copy = MIN2(parameter->component_count, componentCount);
+	}
 
 	return 0;
 }
@@ -1649,6 +1679,65 @@ EXPORT(SceGxm, 0x277794C4, const SceGxmProgramParameter *, sceGxmProgramFindPara
 	}
 
 	return NULL;
+}
+
+EXPORT(SceGxm, 0xDBA8D061, uint32_t, sceGxmProgramParameterGetArraySize, const SceGxmProgramParameter *parameter)
+{
+    return parameter->array_size;
+}
+
+EXPORT(SceGxm, 0x1997DC17, SceGxmParameterCategory, sceGxmProgramParameterGetCategory, const SceGxmProgramParameter *parameter)
+{
+    return parameter->category;
+}
+
+EXPORT(SceGxm, 0xBD2998D1, uint32_t, sceGxmProgramParameterGetComponentCount, const SceGxmProgramParameter *parameter)
+{
+    return parameter->component_count;
+}
+
+EXPORT(SceGxm, 0xBB58267D, uint32_t, sceGxmProgramParameterGetContainerIndex, const SceGxmProgramParameter *parameter)
+{
+    return parameter->container_index;
+}
+
+EXPORT(SceGxm, 0x6E61DDF5, uint32_t, sceGxmProgramParameterGetIndex, const SceGxmProgram *program, const SceGxmProgramParameter *parameter)
+{
+    uint32_t parameter_offset = program->parameters_offset;
+
+    if (parameter_offset > 0)
+        parameter_offset += (uintptr_t)&program->parameters_offset;
+    return (uint32_t)((uintptr_t)parameter - parameter_offset) >> 4;
+}
+
+EXPORT(SceGxm, 0x6AF88A5D, const char *, sceGxmProgramParameterGetName, const SceGxmProgramParameter *parameter)
+{
+    if (!parameter)
+        return NULL;
+    return (const char *)((uintptr_t)parameter + parameter->name_offset);
+}
+
+EXPORT(SceGxm, 0x5C79D59A, uint32_t, sceGxmProgramParameterGetResourceIndex, const SceGxmProgramParameter *parameter)
+{
+    return parameter->resource_index;
+}
+
+EXPORT(SceGxm, 0xE6D9C4CE, SceGxmParameterSemantic, sceGxmProgramParameterGetSemantic, const SceGxmProgramParameter *parameter)
+{
+    if (parameter->category != SCE_GXM_PARAMETER_CATEGORY_ATTRIBUTE)
+        return SCE_GXM_PARAMETER_SEMANTIC_NONE;
+
+    return parameter->semantic;
+}
+
+EXPORT(SceGxm, 0xB85CC13E, uint32_t, sceGxmProgramParameterGetSemanticIndex, const SceGxmProgramParameter *parameter)
+{
+    return parameter->semantic_index & 0xf;
+}
+
+EXPORT(SceGxm, 0x7B9023C3, SceGxmParameterType, sceGxmProgramParameterGetType, const SceGxmProgramParameter *parameter)
+{
+    return parameter->type;
 }
 
 static void upload_fragment_texture_descriptors(SceGxmContext *context)
