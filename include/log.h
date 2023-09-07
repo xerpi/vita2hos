@@ -6,7 +6,6 @@
 #include <inttypes.h>
 #include "util.h"
 
-#define DEBUG
 #define VERBOSE_LOGGING
 
 #ifdef DEBUG

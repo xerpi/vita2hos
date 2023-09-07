@@ -1,11 +1,10 @@
-#include <stdbool.h>
 #include <stdlib.h>
 #include <switch.h>
 #include <psp2/kernel/error.h>
 #include <psp2/kernel/threadmgr.h>
-#include "SceKernelThreadMgr.h"
-#include "SceLibKernel.h"
-#include "SceSysmem.h"
+#include "modules/SceKernelThreadMgr.h"
+#include "modules/SceLibKernel.h"
+#include "modules/SceSysmem.h"
 #include "module.h"
 #include "protected_bitset.h"
 #include "util.h"

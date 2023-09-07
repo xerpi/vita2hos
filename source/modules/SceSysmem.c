@@ -1,11 +1,10 @@
 #include <stdatomic.h>
-#include <stdbool.h>
 #include <stdlib.h>
 #include <switch.h>
 #include <deko3d.h>
 #include <psp2/kernel/error.h>
 #include <psp2/kernel/sysmem.h>
-#include "SceSysmem.h"
+#include "modules/SceSysmem.h"
 #include "dk_helpers.h"
 #include "module.h"
 #include "protected_bitset.h"

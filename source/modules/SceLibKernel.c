@@ -1,6 +1,5 @@
 #include <stdarg.h>
 #include <stdatomic.h>
-#include <stdbool.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <dirent.h>
@@ -11,9 +10,9 @@
 #undef st_atime
 #undef st_mtime
 #include <psp2/io/dirent.h>
-#include "SceLibKernel.h"
-#include "SceKernelThreadMgr.h"
-#include "SceSysmem.h"
+#include "modules/SceLibKernel.h"
+#include "modules/SceKernelThreadMgr.h"
+#include "modules/SceSysmem.h"
 #include "module.h"
 #include "protected_bitset.h"
 #include "util.h"

@@ -3,8 +3,8 @@
 #include <switch.h>
 #include <deko3d.h>
 #include <psp2/display.h>
-#include "SceDisplay.h"
-#include "SceSysmem.h"
+#include "modules/SceDisplay.h"
+#include "modules/SceSysmem.h"
 #include "dk_helpers.h"
 #include "module.h"
 #include "util.h"

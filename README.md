@@ -47,6 +47,17 @@ When loading a PlayStation Vita executable, _vita2hos_ redirects the [module](ht
 3. Run `vita2hos.nsp`
 4. Enjoy!
 
+## Building
+
+1. `mkdir build && cd build`
+2. Two options:\
+  &ensp;a. `arm-none-eabi-cmake ..`\
+  &ensp;b. `cmake -DCMAKE_TOOLCHAIN_FILE:FILEPATH=$DEVKITPRO/cmake/devkitARM.cmake ..`
+3. `make` (or `ninja` if configured with `-G Ninja`)
+4. `vita2hos.nsp` will be generated
+
+I recommend passing `-DCMAKE_COLOR_DIAGNOSTICS:BOOL=TRUE`, especially when using Ninja.
+
 ## Project status, compatibility and supported features
 
 This is still in very early stages and therefore it can only run very simple CPU-rendered PlayStation Vita homebrews.

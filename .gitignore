@@ -65,3 +65,6 @@ build/
 *.txt
 *.lst
 *.jpg
+
+# CMake
+!CMakeLists.txt

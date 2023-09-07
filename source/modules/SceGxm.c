@@ -4,8 +4,8 @@
 #include <psp2/kernel/error.h>
 #include <psp2/kernel/threadmgr.h>
 #include <psp2/gxm.h>
-#include "SceGxm.h"
-#include "SceSysmem.h"
+#include "modules/SceGxm.h"
+#include "modules/SceSysmem.h"
 #include "circ_buf.h"
 #include "config.h"
 #include "dk_helpers.h"
