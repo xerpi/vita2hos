@@ -1,6 +1,5 @@
 #include <stdlib.h>
 #include <string.h>
-#include <elf.h>
 #include <miniz/miniz.h>
 #include <switch.h>
 #include <psp2/kernel/error.h>

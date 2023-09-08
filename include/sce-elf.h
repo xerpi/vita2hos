@@ -1,6 +1,8 @@
 #ifndef SCE_ELF_H
 #define SCE_ELF_H
 
+#include <elf.h>
+
 #define SCEMAG0     'S'
 #define SCEMAG1     'C'
 #define SCEMAG2     'E'
