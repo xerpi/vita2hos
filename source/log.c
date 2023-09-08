@@ -8,7 +8,7 @@ bool log_to_fb_console;
 #ifdef VITA2HOS_LOG_TO_FILE
 const char log_file_path[] = "sdmc:/vita2hos/debug.log";
 
-void flog(const char * str)
+void flog(const char *str)
 {
 	FILE *fp;
 

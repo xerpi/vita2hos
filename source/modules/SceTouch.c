@@ -1,12 +1,13 @@
-#include <switch.h>
 #include <psp2/touch.h>
+#include <switch.h>
+#include "log.h"
 #include "module.h"
 #include "util.h"
-#include "log.h"
 
 #define MAX_TOUCH_STATES 8
 
-EXPORT(SceTouch, 0xFF082DF0, int, sceTouchPeek, SceUInt32 port, SceTouchData *pData, SceUInt32 nBufs)
+EXPORT(SceTouch, 0xFF082DF0, int, sceTouchPeek, SceUInt32 port, SceTouchData *pData,
+       SceUInt32 nBufs)
 {
 	HidTouchScreenState states[MAX_TOUCH_STATES];
 	int total;
@@ -36,7 +37,8 @@ EXPORT(SceTouch, 0xFF082DF0, int, sceTouchPeek, SceUInt32 port, SceTouchData *pD
 	return total;
 }
 
-EXPORT(SceTouch, 0x10A2CA25, int, sceTouchGetPanelInfo, SceUInt32 port, SceTouchPanelInfo *pPanelInfo)
+EXPORT(SceTouch, 0x10A2CA25, int, sceTouchGetPanelInfo, SceUInt32 port,
+       SceTouchPanelInfo *pPanelInfo)
 {
 	switch (port) {
 	case SCE_TOUCH_PORT_FRONT:

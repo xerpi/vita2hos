@@ -2,11 +2,11 @@
 #define VITA_TO_DK_H
 
 #include <assert.h>
+#include <deko3d.h>
 #include <psp2/display.h>
 #include <psp2/gxm.h>
-#include <deko3d.h>
 
-#define SCE_GXM_COLOR_BASE_FORMAT_MASK 0xF1800000U
+#define SCE_GXM_COLOR_BASE_FORMAT_MASK	 0xF1800000U
 #define SCE_GXM_TEXTURE_BASE_FORMAT_MASK 0x9f000000U
 
 static inline uint32_t display_pixelformat_bytes_per_pixel(SceDisplayPixelFormat format)
@@ -169,7 +169,8 @@ static inline size_t gxm_texture_base_format_bytes_per_pixel(SceGxmTextureBaseFo
 
 static inline size_t gxm_texture_format_bytes_per_pixel(SceGxmTextureFormat format)
 {
-	return gxm_texture_base_format_bytes_per_pixel(format & SCE_GXM_TEXTURE_BASE_FORMAT_MASK) >> 3;
+	return gxm_texture_base_format_bytes_per_pixel(format & SCE_GXM_TEXTURE_BASE_FORMAT_MASK) >>
+	       3;
 }
 
 static inline DkImageFormat gxm_color_format_to_dk_image_format(SceGxmColorFormat format)

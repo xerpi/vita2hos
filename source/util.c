@@ -9,7 +9,8 @@ int util_load_file(const char *filename, void **data, uint32_t *size)
 
 	fp = fopen(filename, "rb");
 	if (!fp) {
-		LOG("util_load_file: could not open file \"%s\". Error: %s", filename, strerror(errno));
+		LOG("util_load_file: could not open file \"%s\". Error: %s", filename,
+		    strerror(errno));
 		return -1;
 	}
 

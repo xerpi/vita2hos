@@ -1,17 +1,17 @@
-#include <stdatomic.h>
-#include <stdlib.h>
-#include <switch.h>
 #include <deko3d.h>
 #include <psp2/kernel/error.h>
 #include <psp2/kernel/sysmem.h>
-#include "modules/SceSysmem.h"
+#include <stdatomic.h>
+#include <stdlib.h>
+#include <switch.h>
 #include "dk_helpers.h"
+#include "log.h"
 #include "module.h"
+#include "modules/SceSysmem.h"
 #include "protected_bitset.h"
 #include "util.h"
-#include "log.h"
 
-#define MAX_MEMBLOCKS	256
+#define MAX_MEMBLOCKS 256
 
 static _Atomic SceUID g_last_uid = 1;
 static DkDevice g_dk_device;
@@ -20,11 +20,14 @@ DECL_PROTECTED_BITSET(VitaMemBlockInfo, vita_memblock_infos, MAX_MEMBLOCKS)
 DECL_PROTECTED_BITSET_ALLOC(memblock_info_alloc, vita_memblock_infos, VitaMemBlockInfo)
 DECL_PROTECTED_BITSET_RELEASE(memblock_info_release, vita_memblock_infos, VitaMemBlockInfo)
 DECL_PROTECTED_BITSET_GET_FOR_UID(get_memblock_info_for_uid, vita_memblock_infos, VitaMemBlockInfo)
-DECL_PROTECTED_BITSET_GET_CMP(get_memblock_info_for_addr, vita_memblock_infos, VitaMemBlockInfo, const void *, base,
+DECL_PROTECTED_BITSET_GET_CMP(get_memblock_info_for_addr, vita_memblock_infos, VitaMemBlockInfo,
+			      const void *, base,
 			      base >= g_vita_memblock_infos[index].base &&
-			      base < (g_vita_memblock_infos[index].base + g_vita_memblock_infos[index].size))
+				  base < (g_vita_memblock_infos[index].base +
+					  g_vita_memblock_infos[index].size))
 
-EXPORT(SceSysmem, 0xB9D5EBDE, SceUID, sceKernelAllocMemBlock, const char *name, SceKernelMemBlockType type, SceSize size, SceKernelAllocMemBlockOpt *opt)
+EXPORT(SceSysmem, 0xB9D5EBDE, SceUID, sceKernelAllocMemBlock, const char *name,
+       SceKernelMemBlockType type, SceSize size, SceKernelAllocMemBlockOpt *opt)
 {
 	VitaMemBlockInfo *block;
 	uint32_t alignment;
@@ -47,16 +50,14 @@ EXPORT(SceSysmem, 0xB9D5EBDE, SceUID, sceKernelAllocMemBlock, const char *name, 
 
 	switch (type) {
 	case SCE_KERNEL_MEMBLOCK_TYPE_USER_RW:
-		memblock_flags = DkMemBlockFlags_CpuCached |
-				 DkMemBlockFlags_GpuCached;
+		memblock_flags = DkMemBlockFlags_CpuCached | DkMemBlockFlags_GpuCached;
 		break;
 	case SCE_KERNEL_MEMBLOCK_TYPE_USER_RW_UNCACHE:
 	case SCE_KERNEL_MEMBLOCK_TYPE_USER_CDRAM_RW:
 	case SCE_KERNEL_MEMBLOCK_TYPE_USER_MAIN_PHYCONT_RW:
 	case SCE_KERNEL_MEMBLOCK_TYPE_USER_MAIN_PHYCONT_NC_RW:
 	default:
-		memblock_flags = DkMemBlockFlags_CpuUncached |
-				 DkMemBlockFlags_GpuCached;
+		memblock_flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached;
 		break;
 	}
 

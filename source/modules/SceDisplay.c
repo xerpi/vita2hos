@@ -1,18 +1,18 @@
+#include <deko3d.h>
+#include <psp2/display.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <switch.h>
-#include <deko3d.h>
-#include <psp2/display.h>
+#include "dk_helpers.h"
+#include "log.h"
+#include "module.h"
 #include "modules/SceDisplay.h"
 #include "modules/SceSysmem.h"
-#include "dk_helpers.h"
-#include "module.h"
 #include "util.h"
 #include "vita_to_dk.h"
-#include "log.h"
 
-#define SWAPCHAIN_SIZE	2
-#define CMDBUF_SIZE	4 * 1024
+#define SWAPCHAIN_SIZE 2
+#define CMDBUF_SIZE    4 * 1024
 
 static DkDevice g_dk_device;
 static DkQueue g_transfer_queue;
@@ -47,13 +47,14 @@ static void create_swapchain(uint32_t width, uint32_t height)
 	dkImageLayoutInitialize(&framebuffer_layout, &image_layout_maker);
 
 	/* Retrieve necessary size and alignment for the framebuffers */
-	framebuffer_size  = dkImageLayoutGetSize(&framebuffer_layout);
+	framebuffer_size = dkImageLayoutGetSize(&framebuffer_layout);
 	framebuffer_align = dkImageLayoutGetAlignment(&framebuffer_layout);
-	framebuffer_size  = ALIGN(framebuffer_size, framebuffer_align);
+	framebuffer_size = ALIGN(framebuffer_size, framebuffer_align);
 
 	/* Create a memory block that will host the framebuffers */
-	g_framebuffer_memblock = dk_alloc_memblock(g_dk_device, SWAPCHAIN_SIZE * framebuffer_size,
-						   DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image);
+	g_framebuffer_memblock =
+	    dk_alloc_memblock(g_dk_device, SWAPCHAIN_SIZE * framebuffer_size,
+			      DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image);
 
 	/* Initialize the framebuffers with the layout and backing memory we've just created */
 	for (uint32_t i = 0; i < SWAPCHAIN_SIZE; i++) {
@@ -72,9 +73,9 @@ static void create_swapchain(uint32_t width, uint32_t height)
 	g_swapchain_created = true;
 }
 
-static void cmdbuf_copy_image(DkCmdBuf cmdbuf,
-			      DkImage const *src_image, uint32_t src_width, uint32_t src_height,
-			      DkImage const *dst_image, uint32_t dst_width, uint32_t dst_height)
+static void cmdbuf_copy_image(DkCmdBuf cmdbuf, DkImage const *src_image, uint32_t src_width,
+			      uint32_t src_height, DkImage const *dst_image, uint32_t dst_width,
+			      uint32_t dst_height)
 {
 	DkImageView src_view, dst_view;
 	DkImageRect src_rect, dst_rect;
@@ -94,8 +95,8 @@ static void cmdbuf_copy_image(DkCmdBuf cmdbuf,
 	dkCmdBufBlitImage(cmdbuf, &src_view, &src_rect, &dst_view, &dst_rect, 0, 1);
 }
 
-static bool dkimage_for_existing_framebuffer(DkImage *image, const void *addr,
-					     uint32_t width, uint32_t height, uint32_t stride,
+static bool dkimage_for_existing_framebuffer(DkImage *image, const void *addr, uint32_t width,
+					     uint32_t height, uint32_t stride,
 					     SceDisplayPixelFormat pixelfmt)
 {
 	DkMemBlock memblock;
@@ -113,7 +114,8 @@ static bool dkimage_for_existing_framebuffer(DkImage *image, const void *addr,
 	image_layout_maker.dimensions[1] = height;
 	image_layout_maker.pitchStride = stride * display_pixelformat_bytes_per_pixel(pixelfmt);
 	dkImageLayoutInitialize(&image_layout, &image_layout_maker);
-	dkImageInitialize(image, &image_layout, memblock, dk_memblock_cpu_addr_offset(memblock, addr));
+	dkImageInitialize(image, &image_layout, memblock,
+			  dk_memblock_cpu_addr_offset(memblock, addr));
 
 	return true;
 }
@@ -150,7 +152,8 @@ static void presenter_thread_func(void *arg)
 		}
 
 		/* Build a DkImage for the source PSVita-configured framebuffer */
-		if (!dkimage_for_existing_framebuffer(&src_image, base, width, height, stride, pixelfmt))
+		if (!dkimage_for_existing_framebuffer(&src_image, base, width, height, stride,
+						      pixelfmt))
 			goto next_frame_sleep;
 
 		/* Acquire a framebuffer from the swapchain */
@@ -159,9 +162,10 @@ static void presenter_thread_func(void *arg)
 		/* Wait for the acquire fence to be signaled before starting the 2D transfer */
 		dkCmdBufWaitFence(g_cmdbuf, &acquire_fence);
 
-		/* 2D copy command from the PSVita-configured framebuffer to the swapchain framebuffer */
-		cmdbuf_copy_image(g_cmdbuf, &src_image, width, height,
-				  &g_swapchain_images[slot], width, height);
+		/* 2D copy command from the PSVita-configured framebuffer to the swapchain
+		 * framebuffer */
+		cmdbuf_copy_image(g_cmdbuf, &src_image, width, height, &g_swapchain_images[slot],
+				  width, height);
 
 		/* Finish the command list */
 		cmdlist = dkCmdBufFinishList(g_cmdbuf);
@@ -178,29 +182,33 @@ static void presenter_thread_func(void *arg)
 		/* Notify that there has been a "VBlank" (new frame presented) */
 		condvarWakeAll(&g_vblank_condvar);
 
-		/* Make sure the transfer has finished (this should have happened when the acquire fence got signalled) */
+		/* Make sure the transfer has finished (this should have happened when the acquire
+		 * fence got signalled) */
 		dkQueueWaitIdle(g_transfer_queue);
 
-		/* The transfer has finished and the queue is idle, we can reset the command buffer */
+		/* The transfer has finished and the queue is idle, we can reset the command buffer
+		 */
 		dkCmdBufClear(g_cmdbuf);
 
 		continue;
 
-next_frame_sleep:
+	next_frame_sleep:
 		svcSleepThread(16666667ull);
 	}
 
 	threadExit();
 }
 
-EXPORT(SceDisplayUser, 0x7A410B64, int, sceDisplaySetFrameBuf, const SceDisplayFrameBuf *pParam, SceDisplaySetBufSync sync)
+EXPORT(SceDisplayUser, 0x7A410B64, int, sceDisplaySetFrameBuf, const SceDisplayFrameBuf *pParam,
+       SceDisplaySetBufSync sync)
 {
 	g_vita_conf_fb = *pParam;
 
 	return 0;
 }
 
-EXPORT(SceDisplayUser, 0x42AE6BBC, int, sceDisplayGetFrameBuf, SceDisplayFrameBuf *pParam, SceDisplaySetBufSync sync)
+EXPORT(SceDisplayUser, 0x42AE6BBC, int, sceDisplayGetFrameBuf, SceDisplayFrameBuf *pParam,
+       SceDisplaySetBufSync sync)
 {
 	*pParam = g_vita_conf_fb;
 
@@ -231,9 +239,10 @@ int SceDisplay_init(DkDevice dk_device)
 	queue_maker.maxConcurrentComputeJobs = 0;
 	g_transfer_queue = dkQueueCreate(&queue_maker);
 
-	/* Create a memory block which will be used for recording command lists using a command buffer */
-	g_cmdbuf_memblock = dk_alloc_memblock(g_dk_device, CMDBUF_SIZE,
-					      DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached);
+	/* Create a memory block which will be used for recording command lists using a command
+	 * buffer */
+	g_cmdbuf_memblock = dk_alloc_memblock(
+	    g_dk_device, CMDBUF_SIZE, DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached);
 
 	/* Create a command buffer object */
 	dkCmdBufMakerDefaults(&cmdbuf_maker, g_dk_device);
