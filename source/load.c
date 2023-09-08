@@ -1,9 +1,9 @@
-#include <elf.h>
-#include <miniz/miniz.h>
-#include <psp2/kernel/error.h>
 #include <stdlib.h>
 #include <string.h>
+#include <elf.h>
+#include <miniz/miniz.h>
 #include <switch.h>
+#include <psp2/kernel/error.h>
 #include "arm-encode.h"
 #include "load.h"
 #include "log.h"
@@ -12,7 +12,6 @@
 #include "self.h"
 #include "util.h"
 
-/* clang-format off */
 #define IMP_GET_NEXT(imp) ((sce_module_imports_u_t *)((char *)imp + imp->size))
 #define IMP_GET_FUNC_COUNT(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.num_syms_funcs : imp->imports.num_syms_funcs)
 #define IMP_GET_VARS_COUNT(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.num_syms_vars : imp->imports.num_syms_vars)
@@ -22,7 +21,6 @@
 #define IMP_GET_FUNC_ENTRIES(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.func_entry_table : imp->imports.func_entry_table)
 #define IMP_GET_VARS_TABLE(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.var_nid_table : imp->imports.var_nid_table)
 #define IMP_GET_VARS_ENTRIES(imp) (imp->size == sizeof(sce_module_imports_short_raw) ? imp->imports_short.var_entry_table : imp->imports.var_entry_table)
-/* clang-format on */
 
 #define CODE_RX_TO_RW_ADDR(rx_base, rw_base, rx_addr) \
 	((((uintptr_t)rx_addr - (uintptr_t)rx_base)) + (uintptr_t)rw_base)
@@ -43,8 +41,7 @@ static int load_vpk(Jit *jit, const void *data, uint32_t size, void **entry);
 static int load_executable(Jit *jit, const uint8_t *data, void **entry);
 static int load_elf(Jit *jit, const void *data, void **entry);
 static int load_self(Jit *jit, const void *data, void **entry);
-static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_info_t *segments,
-			 int num_segments);
+static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_info_t *segments, int num_segments);
 static int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_imports_u_t *import);
 static int relocate(const void *reloc, uint32_t size, segment_info_t *segs);
 
@@ -89,13 +86,12 @@ int elf_check_vita_header(const Elf32_Ehdr *hdr)
 	return 0;
 }
 
-static int elf_get_sce_module_info(Elf32_Addr e_entry, const segment_info_t *segments,
-				   sce_module_info_raw **mod_info)
+static int elf_get_sce_module_info(Elf32_Addr e_entry, const segment_info_t *segments, sce_module_info_raw **mod_info)
 {
 	uint32_t offset;
 	uint32_t index;
 
-	index  = (e_entry & 0xC0000000) >> 30;
+	index = (e_entry & 0xC0000000) >> 30;
 	offset = e_entry & 0x3FFFFFFF;
 
 	if (segments[index].src_data == NULL) {
@@ -148,8 +144,7 @@ static int load_vpk(Jit *jit, const void *data, uint32_t size, void **entry)
 
 	LOG("Found an ZIP file (VPK), extracting eboot.bin.");
 
-	eboot_bin =
-	    mz_zip_reader_extract_file_to_heap(&zip_archive, "eboot.bin", &uncompressed_size, 0);
+	eboot_bin = mz_zip_reader_extract_file_to_heap(&zip_archive, "eboot.bin", &uncompressed_size, 0);
 	if (!eboot_bin) {
 		mz_zip_reader_end(&zip_archive);
 		return -1;
@@ -162,6 +157,7 @@ static int load_vpk(Jit *jit, const void *data, uint32_t size, void **entry)
 
 	return ret;
 }
+
 
 static int load_executable(Jit *jit, const uint8_t *data, void **entry)
 {
@@ -192,8 +188,8 @@ static int load_executable(Jit *jit, const uint8_t *data, void **entry)
 static int load_self(Jit *jit, const void *data, void **entry)
 {
 	const SCE_header *self_header = data;
-	const Elf32_Ehdr *elf_hdr     = (void *)((char *)data + self_header->elf_offset);
-	const Elf32_Phdr *prog_hdrs   = (void *)((char *)data + self_header->phdr_offset);
+	const Elf32_Ehdr *elf_hdr = (void *)((char *)data + self_header->elf_offset);
+	const Elf32_Phdr *prog_hdrs = (void *)((char *)data + self_header->phdr_offset);
 	const segment_info *seg_infos = (void *)((char *)data + self_header->section_info_offset);
 	segment_info_t *segments;
 	const Elf32_Phdr *seg_header;
@@ -217,10 +213,8 @@ static int load_self(Jit *jit, const void *data, void **entry)
 		return -1;
 	}
 
-	LOG("Loading SELF: ELF type: 0x%x, header_type: 0x%x, self_filesize: 0x%llx, self_offset: "
-	    "0x%llx",
-	    elf_hdr->e_type, self_header->header_type, self_header->self_filesize,
-	    self_header->self_offset);
+	LOG("Loading SELF: ELF type: 0x%x, header_type: 0x%x, self_filesize: 0x%llx, self_offset: 0x%llx",
+		elf_hdr->e_type, self_header->header_type, self_header->self_filesize, self_header->self_offset);
 
 	/* Make sure it contains a PSVita ELF */
 	if (elf_check_vita_header(elf_hdr) < 0) {
@@ -234,21 +228,21 @@ static int load_self(Jit *jit, const void *data, void **entry)
 
 	for (Elf32_Half i = 0; i < elf_hdr->e_phnum; i++) {
 		seg_header = &prog_hdrs[i];
-		seg_bytes  = (uint8_t *)data + self_header->header_len + seg_header->p_offset;
+		seg_bytes = (uint8_t *)data + self_header->header_len + seg_header->p_offset;
 
-		LOG("Segment %i: encryption: %lld, compression: %lld", i, seg_infos[i].encryption,
-		    seg_infos[i].compression);
+		LOG("Segment %i: encryption: %lld, compression: %lld", i,
+		    seg_infos[i].encryption, seg_infos[i].compression);
 
-		segments[i].p_type   = seg_header->p_type;
+		segments[i].p_type = seg_header->p_type;
 		segments[i].p_filesz = seg_header->p_filesz;
-		segments[i].p_memsz  = seg_header->p_memsz;
-		segments[i].p_flags  = seg_header->p_flags;
-		segments[i].p_align  = seg_header->p_align;
+		segments[i].p_memsz = seg_header->p_memsz;
+		segments[i].p_flags = seg_header->p_flags;
+		segments[i].p_align = seg_header->p_align;
 
 		if (seg_header->p_type == PT_LOAD) {
 			if (seg_header->p_memsz != 0) {
 				if (seg_infos[i].compression == 2) {
-					dest_bytes   = seg_header->p_filesz;
+					dest_bytes = seg_header->p_filesz;
 					uncompressed = malloc(seg_header->p_memsz);
 					if (!uncompressed) {
 						ret = -1;
@@ -263,15 +257,16 @@ static int load_self(Jit *jit, const void *data, void **entry)
 						goto done;
 					}
 
-					segments[i].src_data   = uncompressed;
+					segments[i].src_data = uncompressed;
 					segments[i].needs_free = true;
 				} else {
 					segments[i].src_data = seg_bytes;
+
 				}
 			}
 		} else if (seg_header->p_type == PT_LOOS) {
 			if (seg_infos[i].compression == 2) {
-				dest_bytes   = seg_header->p_filesz;
+				dest_bytes = seg_header->p_filesz;
 				uncompressed = malloc(seg_header->p_filesz);
 				if (!uncompressed) {
 					ret = -1;
@@ -286,7 +281,7 @@ static int load_self(Jit *jit, const void *data, void **entry)
 					goto done;
 				}
 
-				segments[i].src_data   = uncompressed;
+				segments[i].src_data = uncompressed;
 				segments[i].needs_free = true;
 			} else {
 				segments[i].src_data = seg_bytes;
@@ -335,11 +330,11 @@ static int load_elf(Jit *jit, const void *data, void **entry)
 
 	for (Elf32_Half i = 0; i < elf_hdr->e_phnum; i++) {
 		segments[i].src_data = (char *)data + prog_hdrs[i].p_offset;
-		segments[i].p_type   = prog_hdrs[i].p_type;
+		segments[i].p_type = prog_hdrs[i].p_type;
 		segments[i].p_filesz = prog_hdrs[i].p_filesz;
-		segments[i].p_memsz  = prog_hdrs[i].p_memsz;
-		segments[i].p_flags  = prog_hdrs[i].p_flags;
-		segments[i].p_align  = prog_hdrs[i].p_align;
+		segments[i].p_memsz = prog_hdrs[i].p_memsz;
+		segments[i].p_flags = prog_hdrs[i].p_flags;
+		segments[i].p_align = prog_hdrs[i].p_align;
 	}
 
 	ret = load_segments(jit, entry, elf_hdr->e_entry, segments, elf_hdr->e_phnum);
@@ -349,8 +344,7 @@ static int load_elf(Jit *jit, const void *data, void **entry)
 	return ret;
 }
 
-static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_info_t *segments,
-			 int num_segments)
+static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_info_t *segments, int num_segments)
 {
 	uint32_t code_size = 0, data_size = 0;
 	uint32_t code_offset = 0, data_offset = 0;
@@ -409,12 +403,12 @@ static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_inf
 			LOG("  p_align:  0x%" PRIx32, segments[i].p_align);
 
 			if ((segments[i].p_flags & PF_X) == PF_X) {
-				length	= ALIGN(code_rx_addr, segments[i].p_align) - code_rx_addr;
+				length = ALIGN(code_rx_addr, segments[i].p_align) - code_rx_addr;
 				addr_rx = code_rx_addr + code_offset;
 				addr_rw = code_rw_addr + code_offset;
 				code_offset += segments[i].p_memsz;
 			} else {
-				length	= ALIGN(data_addr, segments[i].p_align) - data_addr;
+				length = ALIGN(data_addr, segments[i].p_align) - data_addr;
 				addr_rw = addr_rx = data_addr + data_offset;
 				data_offset += segments[i].p_memsz;
 			}
@@ -423,16 +417,14 @@ static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_inf
 			segments[i].rw_addr = addr_rw;
 
 			if ((segments[i].p_flags & PF_X) == PF_X) {
-				LOG("Code segment loaded at %p for RW, %p for RX", (void *)addr_rw,
-				    (void *)addr_rx);
+				LOG("Code segment loaded at %p for RW, %p for RX",
+				    (void *)addr_rw, (void *)addr_rx);
 			} else {
 				LOG("Data segment loaded at %p ", (void *)addr_rw);
 			}
 
-			memcpy((void *)segments[i].rw_addr, segments[i].src_data,
-			       segments[i].p_filesz);
-			memset((char *)segments[i].rw_addr + segments[i].p_filesz, 0,
-			       segments[i].p_memsz - segments[i].p_filesz);
+			memcpy((void *)segments[i].rw_addr, segments[i].src_data, segments[i].p_filesz);
+			memset((char *)segments[i].rw_addr + segments[i].p_filesz, 0, segments[i].p_memsz - segments[i].p_filesz);
 		} else if (segments[i].p_type == PT_SCE_RELA) {
 			LOG("Found relocations segment (%u)", i);
 			relocate(segments[i].src_data, segments[i].p_filesz, segments);
@@ -456,15 +448,12 @@ static int load_segments(Jit *jit, void **entry, Elf32_Addr e_entry, segment_inf
 	LOG("  tls memsz: 0x%" PRIx32, mod_info->tls_memsz);
 
 	/* Resolve NIDs */
-	sce_module_imports_u_t *import =
-	    (void *)(segments[mod_info_idx].rw_addr + mod_info->import_top);
+	sce_module_imports_u_t *import = (void *)(segments[mod_info_idx].rw_addr + mod_info->import_top);
 	void *end = (void *)(segments[mod_info_idx].rw_addr + mod_info->import_end);
 
 	for (; (void *)import < end; import = IMP_GET_NEXT(import)) {
-		imp_name =
-		    (void *)CODE_RX_TO_RW_ADDR(code_rx_addr, code_rw_addr, IMP_GET_NAME(import));
-		LOG("Resolving imports for %s (NID: 0x%08" PRIx32 ")", imp_name,
-		    IMP_GET_NID(import));
+		imp_name = (void *)CODE_RX_TO_RW_ADDR(code_rx_addr, code_rw_addr, IMP_GET_NAME(import));
+		LOG("Resolving imports for %s (NID: 0x%08" PRIx32 ")", imp_name, IMP_GET_NID(import));
 		if (resolve_imports(code_rx_addr, code_rw_addr, import) < 0) {
 			LOG("Failed to resolve imports for %s", imp_name);
 			goto err_free_data;
@@ -505,10 +494,8 @@ static int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_impo
 	 * it has already been relocated, so we have to convert them to RW addresses */
 
 	for (uint32_t i = 0; i < IMP_GET_FUNC_COUNT(import); i++) {
-		nid = ((uint32_t *)CODE_RX_TO_RW_ADDR(rx_base, rw_base,
-						      IMP_GET_FUNC_TABLE(import)))[i];
-		stub =
-		    (void *)CODE_RX_TO_RW_ADDR(rx_base, rw_base, IMP_GET_FUNC_ENTRIES(import)[i]);
+		nid = ((uint32_t *)CODE_RX_TO_RW_ADDR(rx_base, rw_base, IMP_GET_FUNC_TABLE(import)))[i];
+		stub = (void *)CODE_RX_TO_RW_ADDR(rx_base, rw_base, IMP_GET_FUNC_ENTRIES(import)[i]);
 		addr = module_get_func_export(lib_nid, nid);
 
 		if (addr) {
@@ -516,18 +503,15 @@ static int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_impo
 			stub[1] = arm_encode_movt(12, (uint16_t)(((uintptr_t)addr) >> 16));
 			stub[2] = arm_encode_bx(12);
 		} else {
-			stub[0] =
-			    arm_encode_movw(0, (uint16_t)SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID);
-			stub[1] = arm_encode_movt(
-			    0, (uint16_t)(SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID >> 16));
+			stub[0] = arm_encode_movw(0, (uint16_t)SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID);
+			stub[1] = arm_encode_movt(0, (uint16_t)(SCE_KERNEL_ERROR_MODULEMGR_NO_FUNC_NID >> 16));
 			stub[2] = arm_encode_ret();
 			LOG("  Could not resolve NID 0x%08" PRIx32 ", export not found!", nid);
 		}
 	}
 
 	for (uint32_t i = 0; i < IMP_GET_VARS_COUNT(import); i++) {
-		nid = ((uint32_t *)CODE_RX_TO_RW_ADDR(rx_base, rw_base,
-						      IMP_GET_VARS_TABLE(import)))[i];
+		nid = ((uint32_t *)CODE_RX_TO_RW_ADDR(rx_base, rw_base, IMP_GET_VARS_TABLE(import)))[i];
 		IF_VERBOSE LOG("  Trying to resolve variable NID 0x%08" PRIx32, nid);
 		/* TODO */
 		LOG("    Variable NID resolving currently not implemented!");
@@ -569,28 +553,32 @@ static int relocate(const void *reloc, uint32_t size, segment_info_t *segs)
 		// get values
 		r_symseg = SCE_REL_SYMSEG(*entry);
 		r_datseg = SCE_REL_DATSEG(*entry);
-		symval	 = r_symseg == 15 ? 0 : (uint32_t)segs[r_symseg].rx_addr;
-		loc_rw	 = (uint32_t)segs[r_datseg].rw_addr + r_offset;
-		loc_rx	 = (uint32_t)segs[r_datseg].rx_addr + r_offset;
+		symval = r_symseg == 15 ? 0 : (uint32_t)segs[r_symseg].rx_addr;
+		loc_rw = (uint32_t)segs[r_datseg].rw_addr + r_offset;
+		loc_rx = (uint32_t)segs[r_datseg].rx_addr + r_offset;
 
 		// perform relocation
 		// taken from linux/arch/arm/kernel/module.c of Linux Kernel 4.0
 		switch (SCE_REL_CODE(*entry)) {
-		case R_ARM_V4BX:
+		case R_ARM_V4BX: {
 			/* Preserve Rm and the condition code. Alter
 			 * other bits to re-code instruction as
 			 * MOV PC,Rm.
 			 */
 			value = (*(uint32_t *)loc_rw & 0xf000000f) | 0x01a0f000;
-			break;
+		}
+		break;
 		case R_ARM_ABS32:
-		case R_ARM_TARGET1:
+		case R_ARM_TARGET1: {
 			value = r_addend + symval;
+		}
+		break;
 		case R_ARM_REL32:
-		case R_ARM_TARGET2:
+		case R_ARM_TARGET2: {
 			value = r_addend + symval - loc_rx;
-			break;
-		case R_ARM_THM_PC22:
+		}
+		break;
+		case R_ARM_THM_PC22: {
 			upper = *(uint16_t *)loc_rw;
 			lower = *(uint16_t *)(loc_rw + 2);
 
@@ -607,30 +595,34 @@ static int relocate(const void *reloc, uint32_t size, segment_info_t *segs)
 			 *   J1    = lower[13]
 			 *   J2    = lower[11]
 			 */
-			sign   = (upper >> 10) & 1;
-			j1     = (lower >> 13) & 1;
-			j2     = (lower >> 11) & 1;
+			sign = (upper >> 10) & 1;
+			j1 = (lower >> 13) & 1;
+			j2 = (lower >> 11) & 1;
 			offset = r_addend + symval - loc_rx;
 
-			if (offset <= (int32_t)0xff000000 || offset >= (int32_t)0x01000000) {
+			if (offset <= (int32_t)0xff000000 ||
+			    offset >= (int32_t)0x01000000) {
 				LOG("reloc 0x%" PRIx32 " out of range: 0x%08" PRIx32, pos, symval);
 				break;
 			}
 
 			sign = (offset >> 24) & 1;
-			j1   = sign ^ (~(offset >> 23) & 1);
-			j2   = sign ^ (~(offset >> 22) & 1);
-			upper =
-			    (uint16_t)((upper & 0xf800) | (sign << 10) | ((offset >> 12) & 0x03ff));
-			lower = (uint16_t)((lower & 0xd000) | (j1 << 13) | (j2 << 11) |
+			j1 = sign ^ (~(offset >> 23) & 1);
+			j2 = sign ^ (~(offset >> 22) & 1);
+			upper = (uint16_t)((upper & 0xf800) | (sign << 10) |
+					   ((offset >> 12) & 0x03ff));
+			lower = (uint16_t)((lower & 0xd000) |
+					   (j1 << 13) | (j2 << 11) |
 					   ((offset >> 1) & 0x07ff));
 
 			value = ((uint32_t)lower << 16) | upper;
-			break;
+		}
+		break;
 		case R_ARM_CALL:
-		case R_ARM_JUMP24:
+		case R_ARM_JUMP24: {
 			offset = r_addend + symval - loc_rx;
-			if (offset <= (int32_t)0xfe000000 || offset >= (int32_t)0x02000000) {
+			if (offset <= (int32_t)0xfe000000 ||
+			    offset >= (int32_t)0x02000000) {
 				LOG("reloc 0x%" PRIx32 " out of range: 0x%08" PRIx32, pos, symval);
 				break;
 			}
@@ -639,23 +631,27 @@ static int relocate(const void *reloc, uint32_t size, segment_info_t *segs)
 			offset &= 0x00ffffff;
 
 			value = (*(uint32_t *)loc_rw & 0xff000000) | offset;
-			break;
-		case R_ARM_PREL31:
+		}
+		break;
+		case R_ARM_PREL31: {
 			offset = r_addend + symval - loc_rx;
-			value  = offset & 0x7fffffff;
-			break;
+			value = offset & 0x7fffffff;
+		}
+		break;
 		case R_ARM_MOVW_ABS_NC:
-		case R_ARM_MOVT_ABS:
+		case R_ARM_MOVT_ABS: {
 			offset = symval + r_addend;
 			if (SCE_REL_CODE(*entry) == R_ARM_MOVT_ABS)
 				offset >>= 16;
 
 			value = *(uint32_t *)loc_rw;
 			value &= 0xfff0f000;
-			value |= ((offset & 0xf000) << 4) | (offset & 0x0fff);
-			break;
+			value |= ((offset & 0xf000) << 4) |
+				 (offset & 0x0fff);
+		}
+		break;
 		case R_ARM_THM_MOVW_ABS_NC:
-		case R_ARM_THM_MOVT_ABS:
+		case R_ARM_THM_MOVT_ABS: {
 			upper = *(uint16_t *)loc_rw;
 			lower = *(uint16_t *)(loc_rw + 2);
 
@@ -674,15 +670,19 @@ static int relocate(const void *reloc, uint32_t size, segment_info_t *segs)
 			if (SCE_REL_CODE(*entry) == R_ARM_THM_MOVT_ABS)
 				offset >>= 16;
 
-			upper = (uint16_t)((upper & 0xfbf0) | ((offset & 0xf000) >> 12) |
+			upper = (uint16_t)((upper & 0xfbf0) |
+					   ((offset & 0xf000) >> 12) |
 					   ((offset & 0x0800) >> 1));
-			lower = (uint16_t)((lower & 0x8f00) | ((offset & 0x0700) << 4) |
+			lower = (uint16_t)((lower & 0x8f00) |
+					   ((offset & 0x0700) << 4) |
 					   (offset & 0x00ff));
 
 			value = ((uint32_t)lower << 16) | upper;
-			break;
-		default:
+		}
+		break;
+		default: {
 			LOG("Unknown relocation code %u at 0x%" PRIx32, r_code, pos);
+		}
 		case R_ARM_NONE:
 			continue;
 		}

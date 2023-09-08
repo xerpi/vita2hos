@@ -1,25 +1,25 @@
-#include <dirent.h>
-#include <errno.h>
-#include <psp2/kernel/error.h>
-#include <psp2common/types.h>
 #include <stdarg.h>
 #include <stdatomic.h>
 #include <stdlib.h>
+#include <errno.h>
+#include <dirent.h>
 #include <switch.h>
+#include <psp2common/types.h>
+#include <psp2/kernel/error.h>
 #undef st_ctime
 #undef st_atime
 #undef st_mtime
 #include <psp2/io/dirent.h>
-#include "log.h"
-#include "module.h"
-#include "modules/SceKernelThreadMgr.h"
 #include "modules/SceLibKernel.h"
+#include "modules/SceKernelThreadMgr.h"
 #include "modules/SceSysmem.h"
+#include "module.h"
 #include "protected_bitset.h"
 #include "util.h"
+#include "log.h"
 
 #define MAX_OPENED_FILES 32
-#define MAX_OPENED_DIRS	 32
+#define MAX_OPENED_DIRS  32
 
 typedef struct {
 	uint32_t index;
@@ -72,9 +72,8 @@ EXPORT(SceLibKernel, 0x7595D9AA, int, sceKernelExitProcess, int res)
 	return 0;
 }
 
-EXPORT(SceLibKernel, 0xDA6EC8EF, int, sceKernelCreateLwMutex, SceKernelLwMutexWork *pWork,
-       const char *pName, unsigned int attr, int initCount,
-       const SceKernelLwMutexOptParam *pOptParam)
+EXPORT(SceLibKernel, 0xDA6EC8EF, int, sceKernelCreateLwMutex, SceKernelLwMutexWork *pWork, const char *pName, unsigned int attr,
+			   int initCount, const SceKernelLwMutexOptParam *pOptParam)
 {
 	Mutex *mutex = (void *)pWork;
 	*mutex = initCount;
@@ -86,15 +85,13 @@ EXPORT(SceLibKernel, 0x244E76D2, int, sceKernelDeleteLwMutex, SceKernelLwMutexWo
 	return 0;
 }
 
-EXPORT(SceLibKernel, 0x46E7BE7B, int, sceKernelLockLwMutex, SceKernelLwMutexWork *pWork,
-       int lockCount, unsigned int *pTimeout)
+EXPORT(SceLibKernel, 0x46E7BE7B, int, sceKernelLockLwMutex, SceKernelLwMutexWork *pWork, int lockCount, unsigned int *pTimeout)
 {
 	mutexLock((void *)pWork);
 	return 0;
 }
 
-EXPORT(SceLibKernel, 0xA6A2C915, int, sceKernelTryLockLwMutex, SceKernelLwMutexWork *pWork,
-       int lockCount)
+EXPORT(SceLibKernel, 0xA6A2C915, int, sceKernelTryLockLwMutex, SceKernelLwMutexWork *pWork, int lockCount)
 {
 	if (mutexTryLock((void *)pWork))
 		return 0;
@@ -102,8 +99,7 @@ EXPORT(SceLibKernel, 0xA6A2C915, int, sceKernelTryLockLwMutex, SceKernelLwMutexW
 		return SCE_KERNEL_ERROR_LW_MUTEX_FAILED_TO_OWN;
 }
 
-EXPORT(SceLibKernel, 0x91FA6614, int, sceKernelUnlockLwMutex, SceKernelLwMutexWork *pWork,
-       int unlockCount)
+EXPORT(SceLibKernel, 0x91FA6614, int, sceKernelUnlockLwMutex, SceKernelLwMutexWork *pWork, int unlockCount)
 {
 	mutexUnlock((void *)pWork);
 	return 0;
@@ -298,8 +294,8 @@ EXPORT(SceLibKernel, 0x9C8B6624, int, sceIoDread, SceUID fd, SceIoDirent *dirent
 		st_mode = SCE_S_IFDIR | SCE_S_IRWXU | SCE_S_IRWXG | SCE_S_IRWXS;
 		st_attr = SCE_SO_IFDIR;
 	} else {
-		st_mode = SCE_S_IFREG | SCE_S_IRUSR | SCE_S_IWUSR | SCE_S_IRGRP | SCE_S_IWGRP |
-			  SCE_S_IRSYS | SCE_S_IWSYS;
+		st_mode = SCE_S_IFREG | SCE_S_IRUSR | SCE_S_IWUSR | SCE_S_IRGRP |
+			  SCE_S_IWGRP | SCE_S_IRSYS | SCE_S_IWSYS;
 		st_attr = SCE_SO_IFREG;
 	}
 

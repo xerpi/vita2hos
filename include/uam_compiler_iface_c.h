@@ -11,8 +11,7 @@ typedef enum pipeline_stage pipeline_stage;
 extern "C" {
 #endif
 
-bool uam_compiler_compile_glsl(pipeline_stage stage, const char *glsl_source, void *buffer,
-			       uint32_t *size);
+bool uam_compiler_compile_glsl(pipeline_stage stage, const char *glsl_source, void *buffer, uint32_t *size);
 
 #ifdef __cplusplus
 }

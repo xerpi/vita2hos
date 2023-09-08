@@ -1,14 +1,13 @@
-#include <psp2/ctrl.h>
 #include <stdlib.h>
 #include <switch.h>
-#include "log.h"
+#include <psp2/ctrl.h>
 #include "module.h"
 #include "util.h"
+#include "log.h"
 
 static PadState g_pad;
 
-EXPORT(SceCtrl, 0xA9C3CED6, int, sceCtrlPeekBufferPositive, int port, SceCtrlData *pad_data,
-       int count)
+EXPORT(SceCtrl, 0xA9C3CED6, int, sceCtrlPeekBufferPositive, int port, SceCtrlData *pad_data, int count)
 {
 	u64 buttons;
 	HidAnalogStickState analog_stick_l, analog_stick_r;
@@ -54,11 +53,9 @@ EXPORT(SceCtrl, 0xA9C3CED6, int, sceCtrlPeekBufferPositive, int port, SceCtrlDat
 
 	pad_data->buttons = vita_buttons;
 	pad_data->lx = (255 * (analog_stick_l.x - JOYSTICK_MIN)) / (JOYSTICK_MAX - JOYSTICK_MIN);
-	pad_data->ly =
-	    (255 * ((255 - analog_stick_l.y) - JOYSTICK_MIN)) / (JOYSTICK_MAX - JOYSTICK_MIN);
+	pad_data->ly = (255 * ((255 - analog_stick_l.y) - JOYSTICK_MIN)) / (JOYSTICK_MAX - JOYSTICK_MIN);
 	pad_data->rx = (255 * (analog_stick_r.x - JOYSTICK_MIN)) / (JOYSTICK_MAX - JOYSTICK_MIN);
-	pad_data->ry =
-	    (255 * ((255 - analog_stick_r.y) - JOYSTICK_MIN)) / (JOYSTICK_MAX - JOYSTICK_MIN);
+	pad_data->ry = (255 * ((255 - analog_stick_r.y) - JOYSTICK_MIN)) / (JOYSTICK_MAX - JOYSTICK_MIN);
 
 	return 0;
 }

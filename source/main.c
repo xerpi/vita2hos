@@ -1,38 +1,37 @@
-#include <arpa/inet.h>
 #include <assert.h>
-#include <deko3d.h>
+#include <arpa/inet.h>
 #include <elf.h>
-#include <psp2/kernel/threadmgr.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <switch.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <time.h>
-#include "config.h"
-#include "load.h"
-#include "log.h"
-#include "module.h"
+#include <switch.h>
+#include <deko3d.h>
+#include <psp2/kernel/threadmgr.h>
+#include "modules/SceSysmem.h"
+#include "modules/SceKernelThreadMgr.h"
+#include "modules/SceLibKernel.h"
 #include "modules/SceCtrl.h"
 #include "modules/SceDisplay.h"
 #include "modules/SceGxm.h"
-#include "modules/SceKernelThreadMgr.h"
-#include "modules/SceLibKernel.h"
-#include "modules/SceSysmem.h"
 #include "modules/SceTouch.h"
+#include "config.h"
+#include "module.h"
+#include "log.h"
+#include "load.h"
 
-static void dk_debug_callback(void *userData, const char *context, DkResult result,
-			      const char *message)
+static void dk_debug_callback(void *userData, const char *context, DkResult result, const char *message)
 {
 	char description[256];
 
 	if (result == DkResult_Success) {
-		LOG("deko3d debug callback: context: %s, message: %s, result %d", context, message,
-		    result);
+		LOG("deko3d debug callback: context: %s, message: %s, result %d",
+		    context, message, result);
 	} else {
 		snprintf(description, sizeof(description), "context: %s, message: %s, result %d",
-			 context, message, result);
+		         context, message, result);
 		fatal_error("deko3d fatal error.", description);
 	}
 }
@@ -159,7 +158,7 @@ void NORETURN __assert_func(const char *file, int line, const char *func, const 
 	char message[256];
 
 	snprintf(message, sizeof(message), "assertion \"%s\" failed: file \"%s\", line %d%s%s\n",
-		 failedexpr, file, line, func ? ", function: " : "", func ? func : "");
+		failedexpr, file, line, func ? ", function: " : "", func ? func : "");
 
 	fatal_error("Assertion failed.", message);
 }

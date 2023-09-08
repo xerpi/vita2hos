@@ -1,24 +1,24 @@
-#include <psp2/kernel/error.h>
-#include <psp2/kernel/threadmgr.h>
 #include <stdlib.h>
 #include <switch.h>
-#include "log.h"
-#include "module.h"
+#include <psp2/kernel/error.h>
+#include <psp2/kernel/threadmgr.h>
 #include "modules/SceKernelThreadMgr.h"
 #include "modules/SceLibKernel.h"
 #include "modules/SceSysmem.h"
+#include "module.h"
 #include "protected_bitset.h"
 #include "util.h"
+#include "log.h"
 
-#define SCE_KERNEL_HIGHEST_PRIORITY_USER	       64
-#define SCE_KERNEL_LOWEST_PRIORITY_USER		       191
-#define SCE_KERNEL_DEFAULT_PRIORITY		       ((SceInt32)0x10000100)
-#define SCE_KERNEL_DEFAULT_PRIORITY_GAME_APP	       160
-#define SCE_KERNEL_DEFAULT_PRIORITY_USER	       SCE_KERNEL_DEFAULT_PRIORITY
-#define SCE_KERNEL_THREAD_STACK_SIZE_DEFAULT_USER_MAIN (256 * 1024)
+#define SCE_KERNEL_HIGHEST_PRIORITY_USER		64
+#define SCE_KERNEL_LOWEST_PRIORITY_USER			191
+#define SCE_KERNEL_DEFAULT_PRIORITY			((SceInt32)0x10000100)
+#define SCE_KERNEL_DEFAULT_PRIORITY_GAME_APP		160
+#define SCE_KERNEL_DEFAULT_PRIORITY_USER		SCE_KERNEL_DEFAULT_PRIORITY
+#define SCE_KERNEL_THREAD_STACK_SIZE_DEFAULT_USER_MAIN	(256 * 1024)
 
-#define HOS_HIGHEST_PRIORITY 28
-#define HOS_LOWEST_PRIORITY  59
+#define HOS_HIGHEST_PRIORITY	28
+#define HOS_LOWEST_PRIORITY	59
 
 #define MAX_THREADS	32
 #define KERNEL_TLS_SIZE 0x800
@@ -33,17 +33,14 @@ DECL_PROTECTED_BITSET_GET_FOR_UID(get_thread_info_for_uid, vita_thread_infos, Vi
 static inline int vita_priority_to_hos_priority(int priority)
 {
 	if ((priority & SCE_KERNEL_DEFAULT_PRIORITY) == SCE_KERNEL_DEFAULT_PRIORITY)
-		priority = SCE_KERNEL_DEFAULT_PRIORITY_GAME_APP +
-			   (priority & ~SCE_KERNEL_DEFAULT_PRIORITY);
+		priority = SCE_KERNEL_DEFAULT_PRIORITY_GAME_APP + (priority & ~SCE_KERNEL_DEFAULT_PRIORITY);
 
-	if ((priority < SCE_KERNEL_HIGHEST_PRIORITY_USER) ||
-	    (priority > SCE_KERNEL_LOWEST_PRIORITY_USER))
+	if ((priority < SCE_KERNEL_HIGHEST_PRIORITY_USER) || (priority > SCE_KERNEL_LOWEST_PRIORITY_USER))
 		return SCE_KERNEL_ERROR_ILLEGAL_PRIORITY;
 
 	return HOS_HIGHEST_PRIORITY +
-	       ((priority - SCE_KERNEL_HIGHEST_PRIORITY_USER) *
-		(HOS_LOWEST_PRIORITY - HOS_HIGHEST_PRIORITY)) /
-		   (SCE_KERNEL_LOWEST_PRIORITY_USER - SCE_KERNEL_HIGHEST_PRIORITY_USER);
+	       ((priority - SCE_KERNEL_HIGHEST_PRIORITY_USER) * (HOS_LOWEST_PRIORITY - HOS_HIGHEST_PRIORITY)) /
+	       (SCE_KERNEL_LOWEST_PRIORITY_USER - SCE_KERNEL_HIGHEST_PRIORITY_USER);
 }
 
 static void NORETURN thread_entry_wrapper(void *arg)
@@ -60,8 +57,7 @@ static void NORETURN thread_entry_wrapper(void *arg)
 	threadExit();
 }
 
-static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int initPriority,
-			    SceSize stackSize)
+static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int initPriority, SceSize stackSize)
 {
 	VitaThreadInfo *ti;
 	Result res;
@@ -120,9 +116,9 @@ static int start_thread(SceUID thid, SceSize arglen, void *argp)
 	return 0;
 }
 
-EXPORT(SceLibKernel, 0xC5C11EE7, SceUID, sceKernelCreateThread, const char *name,
-       SceKernelThreadEntry entry, int initPriority, SceSize stackSize, SceUInt attr,
-       int cpuAffinityMask, const SceKernelThreadOptParam *option)
+EXPORT(SceLibKernel, 0xC5C11EE7, SceUID,  sceKernelCreateThread, const char *name, SceKernelThreadEntry entry, int initPriority,
+			     SceSize stackSize, SceUInt attr, int cpuAffinityMask,
+			     const SceKernelThreadOptParam *option)
 {
 	return create_thread(name, entry, initPriority, stackSize);
 }
@@ -167,8 +163,7 @@ EXPORT(SceThreadmgr, 0x1D17DECF, int NORETURN, sceKernelExitDeleteThread, int st
 	// TODO: Delete
 }
 
-EXPORT(SceLibKernel, 0xDDB395A9, int, sceKernelWaitThreadEnd, SceUID thid, int *stat,
-       SceUInt *timeout)
+EXPORT(SceLibKernel, 0xDDB395A9, int, sceKernelWaitThreadEnd, SceUID thid, int *stat, SceUInt *timeout)
 {
 	VitaThreadInfo *ti = get_thread_info_for_uid(thid);
 	uint64_t ns;
