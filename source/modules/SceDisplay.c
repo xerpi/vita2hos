@@ -21,7 +21,7 @@ static DkCmdBuf g_cmdbuf;
 static DkMemBlock g_framebuffer_memblock;
 static DkImage g_swapchain_images[SWAPCHAIN_SIZE];
 static DkSwapchain g_swapchain;
-static bool g_swapchain_created = false;
+static bool g_swapchain_created;
 static uint32_t g_swapchain_image_width;
 static uint32_t g_swapchain_image_height;
 static Thread g_presenter_thread;
@@ -246,6 +246,8 @@ int SceDisplay_init(DkDevice dk_device)
 	mutexInit(&g_vblank_mutex);
 	condvarInit(&g_vblank_condvar);
 
+	g_swapchain_created = false;
+
 	res = threadCreate(&g_presenter_thread, presenter_thread_func, NULL, NULL, 0x10000, 28, -2);
 	if (R_FAILED(res)) {
 		LOG("Error creating VSync thread: 0x%" PRIx32, res);
@@ -277,7 +279,10 @@ int SceDisplay_finish(void)
 	dkQueueWaitIdle(g_transfer_queue);
 	dkCmdBufDestroy(g_cmdbuf);
 	dkMemBlockDestroy(g_cmdbuf_memblock);
-	dkMemBlockDestroy(g_framebuffer_memblock);
+	if (g_swapchain_created) {
+		dkSwapchainDestroy(g_swapchain);
+		dkMemBlockDestroy(g_framebuffer_memblock);
+	}
 	dkQueueDestroy(g_transfer_queue);
 
 	return 0;

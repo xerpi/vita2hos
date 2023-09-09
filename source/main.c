@@ -75,6 +75,8 @@ static int launch(SceKernelThreadEntry entry)
 
 	ret = SceKernelThreadMgr_main_entry(entry, 0, NULL);
 
+	LOG("SceKernelThreadMgr returned...");
+
 	SceGxm_finish();
 	SceDisplay_finish();
 	SceKernelThreadMgr_finish();
