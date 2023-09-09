@@ -76,12 +76,15 @@ EXPORT(SceLibKernel, 0xDA6EC8EF, int, sceKernelCreateLwMutex, SceKernelLwMutexWo
 			   int initCount, const SceKernelLwMutexOptParam *pOptParam)
 {
 	Mutex *mutex = (void *)pWork;
-	*mutex = initCount;
+	mutexInit(mutex);
+	if (initCount > 0)
+		mutexLock(mutex);
 	return 0;
 }
 
 EXPORT(SceLibKernel, 0x244E76D2, int, sceKernelDeleteLwMutex, SceKernelLwMutexWork *pWork)
 {
+	mutexUnlock((void *)pWork);
 	return 0;
 }
 
