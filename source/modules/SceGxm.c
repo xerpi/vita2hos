@@ -23,10 +23,16 @@
 
 #define SCE_GXM_NOTIFICATION_COUNT	512
 
-#define SCE_GXM_DEPTH_STENCIL_CTRL_FORMAT_BITS	0xFFFFF000
-#define SCE_GXM_DEPTH_STENCIL_CTRL_STENCIL_BITS	0xF
-#define SCE_GXM_DEPTH_STENCIL_CTRL_MASK_BIT	0x10
-#define SCE_GXM_DEPTH_STENCIL_CTRL_DISABLE_BIT	0x20
+#define SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_DISABLE_BIT   1
+#define SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_STRIDE_OFFSET 3
+#define SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_STRIDE_MASK   0xF
+#define SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_TYPE_OFFSET   12
+#define SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_TYPE_MASK     0xFF
+#define SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_FORMAT_OFFSET 21
+#define SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_FORMAT_MASK   0x7FF
+
+#define SCE_GXM_DEPTH_STENCIL_BG_CTRL_STENCIL_MASK 0xFF
+#define SCE_GXM_DEPTH_STENCIL_BG_CTRL_MASK_BIT	   0x100
 
 #define MAX_GXM_MAPPED_MEMORY_BLOCKS	256
 
@@ -901,12 +907,18 @@ EXPORT(SceGxm, 0xCA9D41D1, int, sceGxmDepthStencilSurfaceInit, SceGxmDepthStenci
 	else if ((strideInSamples == 0) || ((strideInSamples % SCE_GXM_TILE_SIZEX) != 0))
 		return SCE_GXM_ERROR_INVALID_VALUE;
 
-	surface->zlsControl = SCE_GXM_DEPTH_STENCIL_FORCE_LOAD_DISABLED |
-			      SCE_GXM_DEPTH_STENCIL_FORCE_STORE_DISABLED;
+	memset(surface, 0, sizeof(*surface));
+	surface->zlsControl =
+	    SCE_GXM_DEPTH_STENCIL_FORCE_LOAD_DISABLED | SCE_GXM_DEPTH_STENCIL_FORCE_STORE_DISABLED |
+	    ((strideInSamples >> 5) - 1) << SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_STRIDE_OFFSET |
+	    (surfaceType & (SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_TYPE_MASK
+			    << SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_TYPE_OFFSET)) |
+	    (depthStencilFormat & (SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_FORMAT_MASK
+				   << SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_FORMAT_OFFSET));
 	surface->depthData = depthData;
 	surface->stencilData = stencilData;
-	surface->backgroundDepth = 0.0f;
-	surface->backgroundControl = depthStencilFormat | SCE_GXM_DEPTH_STENCIL_CTRL_MASK_BIT;
+	surface->backgroundDepth = 1.0f;
+	surface->backgroundControl = SCE_GXM_DEPTH_STENCIL_BG_CTRL_MASK_BIT;
 
 	return 0;
 }
@@ -1081,9 +1093,8 @@ static void ensure_shadow_ds_surface(SceGxmContext *context, uint32_t width, uin
 		}
 
 		context->shadow_ds_surface.memblock =
-			dk_alloc_memblock(g_dk_device, ds_surface_size,
-					  DkMemBlockFlags_CpuUncached |
-					  DkMemBlockFlags_GpuCached |
+		    dk_alloc_memblock(g_dk_device, ds_surface_size,
+				      DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached |
 					  DkMemBlockFlags_Image);
 	}
 
@@ -1163,12 +1174,15 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
 	if (fragmentSyncObject)
 		dkCmdBufWaitFence(context->cmdbuf, &fragmentSyncObject->fence);
 
-	if (depthStencil && !(depthStencil->backgroundControl & SCE_GXM_DEPTH_STENCIL_FORCE_LOAD_ENABLED)) {
-		dkCmdBufClearDepthStencil(context->cmdbuf, true, 1.0f, SCE_GXM_DEPTH_STENCIL_CTRL_STENCIL_BITS,
-					  depthStencil->backgroundControl & SCE_GXM_DEPTH_STENCIL_CTRL_STENCIL_BITS);
+	if (depthStencil &&
+	    !(depthStencil->zlsControl & SCE_GXM_DEPTH_STENCIL_FORCE_LOAD_ENABLED)) {
+		dkCmdBufClearDepthStencil(
+		    context->cmdbuf, true, depthStencil->backgroundDepth, 0xFF,
+		    depthStencil->zlsControl & SCE_GXM_DEPTH_STENCIL_BG_CTRL_STENCIL_MASK);
 	}
 
-	context->discard_stencil = depthStencil && !(depthStencil->backgroundControl & SCE_GXM_DEPTH_STENCIL_FORCE_STORE_ENABLED);
+	context->discard_stencil =
+	    depthStencil && !(depthStencil->zlsControl & SCE_GXM_DEPTH_STENCIL_FORCE_STORE_ENABLED);
 
 	/* Mark all state as dirty to make sure we bind everything before the first draw call */
 	context->dirty.raw = ~(uint32_t)0;
