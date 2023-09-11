@@ -29,20 +29,20 @@ When loading a PlayStation Vita executable, _vita2hos_ redirects the [module](ht
       A quick workaround would be to rename the file and restart your Switch.
       Unfortunately `override_config.ini` doesn't allow multiple `path` entries which is why it has to be done this way.
 
-3. Copy a PlayStation Vita executable (`.velf` or `.self`/`eboot.bin`) to `sd:/vita2hos/test.elf`
+3. Copy a PlayStation Vita executable (`.velf` or `.self`/`eboot.bin`) to `sd:/vita2hos/executable`
 4. Boot (or reboot) your Switch and start any game while holding down `R`
     - Attempting to use _vita2hos_ via applet mode (album button) will currently result in a fatal error and wouldn't be recommended anyway.
 5. Enjoy!
 
 ### Running it on yuzu
 
-1. Copy a PlayStation Vita executable (`.velf` or `.self`/`eboot.bin`) to `sd:/vita2hos/test.elf` (_File_ → _Open yuzu Folder_ → `sdmc/`)
+1. Copy a PlayStation Vita executable (`.velf` or `.self`/`eboot.bin`) to `sd:/vita2hos/executable` (_File_ → _Open yuzu Folder_ → `sdmc/`)
 2. Run `vita2hos.nsp`
 3. Enjoy!
 
 ### Running it on Ryujinx
 
-1. Copy a PlayStation Vita executable (`.velf` or `.self`/`eboot.bin`) to `sd:/vita2hos/test.elf` (_File_ → _Open Ryujinx Folder_ → `sdcard/`)
+1. Copy a PlayStation Vita executable (`.velf` or `.self`/`eboot.bin`) to `sd:/vita2hos/executable` (_File_ → _Open Ryujinx Folder_ → `sdcard/`)
 2. Disable PPTC (_Options_ → _Settings_ → _System_ → Unselect _Enable PPTC (Profiled Persistent Translation Cache)_)
 3. Run `vita2hos.nsp`
 4. Enjoy!
