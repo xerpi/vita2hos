@@ -11,7 +11,11 @@
 #include <gxm/types.h>
 
 #define LOG_TRACE(...) LOGSTR(fmt::format(__VA_ARGS__).c_str())
-#define LOG_DEBUG(...) LOGSTR(fmt::format(__VA_ARGS__).c_str())
+template <typename... Args>
+auto LOG_DEBUG(std::string_view fmt, Args &&...args)
+{
+	return fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
+}
 #define LOG_INFO(...) LOGSTR(fmt::format(__VA_ARGS__).c_str())
 #define LOG_WARN(...) LOGSTR(fmt::format(__VA_ARGS__).c_str())
 #define LOG_ERROR(...) LOGSTR(fmt::format(__VA_ARGS__).c_str())
