@@ -78,6 +78,10 @@ target_include_directories(vita2hos PRIVATE
     ${NX_ROOT}/include/uam/mesa-imported
 )
 
+target_compile_options(vita2hos PRIVATE
+    -Wall
+)
+
 target_compile_definitions(vita2hos PRIVATE
     VITA2HOS_MAJOR="${VITA2HOS_MAJOR}"
     VITA2HOS_MINOR="${VITA2HOS_MINOR}"

@@ -28,12 +28,12 @@ std::string log_hex(T val) {
 }
 
 template <typename T>
-std::string log_hex_full(T val) {
-    using unsigned_type = typename std::make_unsigned<T>::type;
-    std::stringstream ss;
-    ss << "0x";
-    ss << std::setfill('0') << std::setw(sizeof(T) * 2) << std::hex << val;
-    return ss.str();
+std::string log_hex_full(T val)
+{
+	std::stringstream ss;
+	ss << "0x";
+	ss << std::setfill('0') << std::setw(sizeof(T) * 2) << std::hex << val;
+	return ss.str();
 }
 
 template <> struct fmt::formatter<SceGxmAttributeFormat>: formatter<uint32_t> {

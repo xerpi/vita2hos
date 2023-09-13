@@ -137,6 +137,11 @@ typedef struct SceGxmContext {
 			DkImage image;
 			DkImageView view;
 		} shadow_ds_surface;
+		struct {
+			void *cpu_addr;
+			DkGpuAddr gpu_addr;
+			bool allocated;
+		} vertex_default_uniform, fragment_default_uniform;
 		/* Dirty state tracking */
 		union {
 			struct {
@@ -146,6 +151,8 @@ typedef struct SceGxmContext {
 				uint32_t back_stencil : 1;
 				uint32_t color_write : 1;
 				uint32_t fragment_textures : 1;
+				uint32_t vertex_default_uniform : 1;
+				uint32_t fragment_default_uniform : 1;
 			} bit;
 			uint32_t raw;
 		} dirty;
@@ -532,13 +539,7 @@ EXPORT(SceGxm, 0xE84CE5B4, int, sceGxmCreateContext, const SceGxmContextParams *
 		DkMemBlockFlags_GpuCached);
 
 	/* Init default state */
-	ctx->state.vertex_rb.head = 0;
-	ctx->state.fragment_rb.head = 0;
-	ctx->state.vertex_program = NULL;
-	ctx->state.fragment_program = NULL;
-
-	ctx->state.in_scene = false;
-	ctx->state.two_sided_mode = false;
+	memset(&ctx->state, 0, sizeof(ctx->state));
 
 	dkRasterizerStateDefaults(&ctx->state.rasterizer);
 	ctx->state.rasterizer.cullMode = DkFace_None;
@@ -1390,14 +1391,34 @@ EXPORT(SceGxm, 0x895DF2E9, int, sceGxmSetVertexStream, SceGxmContext *context, u
 
 EXPORT(SceGxm, 0x8FA3F9C3, unsigned int, sceGxmProgramGetDefaultUniformBufferSize, const SceGxmProgram *program)
 {
-	return program->default_uniform_buffer_count * sizeof(uint32_t);
+	return program->default_uniform_buffer_count * sizeof(float);
+}
+
+EXPORT(SceGxm, 0xC697CAE5, int, sceGxmSetVertexDefaultUniformBuffer, SceGxmContext *context,
+       const void *uniformBuffer)
+{
+	VitaMemBlockInfo *block;
+	uint32_t offset;
+
+	block = SceSysmem_get_vita_memblock_info_for_addr(uniformBuffer);
+	if (!block)
+		return SCE_GXM_ERROR_INVALID_VALUE;
+
+	offset = (uintptr_t)uniformBuffer - (uintptr_t)block->base;
+
+	context->state.vertex_default_uniform.cpu_addr =
+	    dkMemBlockGetCpuAddr(block->dk_memblock) + offset;
+	context->state.vertex_default_uniform.gpu_addr =
+	    dkMemBlockGetGpuAddr(block->dk_memblock) + offset;
+	context->state.dirty.bit.vertex_default_uniform = true;
+
+	return 0;
 }
 
 EXPORT(SceGxm, 0x97118913, int, sceGxmReserveVertexDefaultUniformBuffer, SceGxmContext *context, void **uniformBuffer)
 {
-	DkBufExtents buf_extents;
-	uint32_t default_uniform_buffer_count;
 	const SceGxmProgram *program;
+	uint32_t size;
 
 	if (!context->state.in_scene)
 		return SCE_GXM_ERROR_NOT_WITHIN_SCENE;
@@ -1405,31 +1426,57 @@ EXPORT(SceGxm, 0x97118913, int, sceGxmReserveVertexDefaultUniformBuffer, SceGxmC
 		return SCE_GXM_ERROR_NULL_PROGRAM;
 
 	program = context->state.vertex_program->programId->programHeader;
-
-	default_uniform_buffer_count = program->default_uniform_buffer_count;
-	if (default_uniform_buffer_count == 0) {
+	size = program->default_uniform_buffer_count * sizeof(float);
+	if (size == 0) {
 		*uniformBuffer = NULL;
 		return 0;
 	}
 
-	buf_extents.addr =
-	    dkMemBlockGetGpuAddr(context->vertex_rb.memblock) + context->state.vertex_rb.head;
-	buf_extents.size = default_uniform_buffer_count * sizeof(float);
+	if (context->state.vertex_default_uniform.allocated) {
+		*uniformBuffer = context->state.vertex_default_uniform.cpu_addr;
+		return 0;
+	}
 
-	dkCmdBufBindStorageBuffers(context->cmdbuf, DkStage_Vertex, 0, &buf_extents, 1);
+	if (context->state.vertex_rb.head + size > context->vertex_rb.size)
+		context->state.vertex_rb.head = 0;
 
-	*uniformBuffer =
+	*uniformBuffer = context->state.vertex_default_uniform.cpu_addr =
 	    dkMemBlockGetCpuAddr(context->vertex_rb.memblock) + context->state.vertex_rb.head;
-	context->state.vertex_rb.head += buf_extents.size;
+	context->state.vertex_default_uniform.gpu_addr =
+	    dkMemBlockGetGpuAddr(context->vertex_rb.memblock) + context->state.vertex_rb.head;
+
+	context->state.vertex_rb.head += size;
+	context->state.vertex_default_uniform.allocated = true;
+	context->state.dirty.bit.vertex_default_uniform = true;
+
+	return 0;
+}
+
+EXPORT(SceGxm, 0xA824EB24, int, sceGxmSetFragmentDefaultUniformBuffer, SceGxmContext *context,
+       const void *uniformBuffer)
+{
+	VitaMemBlockInfo *block;
+	uint32_t offset;
+
+	block = SceSysmem_get_vita_memblock_info_for_addr(uniformBuffer);
+	if (!block)
+		return SCE_GXM_ERROR_INVALID_VALUE;
+
+	offset = (uintptr_t)uniformBuffer - (uintptr_t)block->base;
+
+	context->state.fragment_default_uniform.cpu_addr =
+	    dkMemBlockGetCpuAddr(block->dk_memblock) + offset;
+	context->state.fragment_default_uniform.gpu_addr =
+	    dkMemBlockGetGpuAddr(block->dk_memblock) + offset;
+	context->state.dirty.bit.fragment_default_uniform = true;
 
 	return 0;
 }
 
 EXPORT(SceGxm, 0x7B1FABB6, int, sceGxmReserveFragmentDefaultUniformBuffer, SceGxmContext *context, void **uniformBuffer)
 {
-	DkBufExtents buf_extents;
-	uint32_t default_uniform_buffer_count;
 	const SceGxmProgram *program;
+	uint32_t size;
 
 	if (!context->state.in_scene)
 		return SCE_GXM_ERROR_NOT_WITHIN_SCENE;
@@ -1437,22 +1484,28 @@ EXPORT(SceGxm, 0x7B1FABB6, int, sceGxmReserveFragmentDefaultUniformBuffer, SceGx
 		return SCE_GXM_ERROR_NULL_PROGRAM;
 
 	program = context->state.fragment_program->programId->programHeader;
-
-	default_uniform_buffer_count = program->default_uniform_buffer_count;
-	if (default_uniform_buffer_count == 0) {
+	size = program->default_uniform_buffer_count * sizeof(float);
+	if (size == 0) {
 		*uniformBuffer = NULL;
 		return 0;
 	}
 
-	buf_extents.addr =
-	    dkMemBlockGetGpuAddr(context->fragment_rb.memblock) + context->state.fragment_rb.head;
-	buf_extents.size = default_uniform_buffer_count * sizeof(float);
+	if (context->state.fragment_default_uniform.allocated) {
+		*uniformBuffer = context->state.fragment_default_uniform.cpu_addr;
+		return 0;
+	}
 
-	dkCmdBufBindStorageBuffers(context->cmdbuf, DkStage_Fragment, 1, &buf_extents, 1);
+	if (context->state.fragment_rb.head + size > context->fragment_rb.size)
+		context->state.fragment_rb.head = 0;
 
-	*uniformBuffer =
+	*uniformBuffer = context->state.fragment_default_uniform.cpu_addr =
 	    dkMemBlockGetCpuAddr(context->fragment_rb.memblock) + context->state.fragment_rb.head;
-	context->state.fragment_rb.head += buf_extents.size;
+	context->state.fragment_default_uniform.gpu_addr =
+	    dkMemBlockGetGpuAddr(context->fragment_rb.memblock) + context->state.fragment_rb.head;
+
+	context->state.fragment_rb.head += size;
+	context->state.fragment_default_uniform.allocated = true;
+	context->state.dirty.bit.fragment_default_uniform = true;
 
 	return 0;
 }
@@ -1838,10 +1891,12 @@ static void upload_fragment_texture_descriptors(SceGxmContext *context)
 static void context_flush_dirty_state(SceGxmContext *context)
 {
 	const DkShader *shaders[2];
+	const SceGxmVertexProgram *vertex_program = context->state.vertex_program;
+	const SceGxmFragmentProgram *fragment_program = context->state.fragment_program;
 
 	if (context->state.dirty.bit.shaders) {
-		shaders[0] = &context->state.vertex_program->dk_shader;
-		shaders[1] = &context->state.fragment_program->dk_shader;
+		shaders[0] = &vertex_program->dk_shader;
+		shaders[1] = &fragment_program->dk_shader;
 		dkCmdBufBindShaders(context->cmdbuf, DkStageFlag_GraphicsMask, shaders,
 				    ARRAY_SIZE(shaders));
 		context->state.dirty.bit.shaders = false;
@@ -1874,6 +1929,28 @@ static void context_flush_dirty_state(SceGxmContext *context)
 	if (context->state.dirty.bit.fragment_textures) {
 		upload_fragment_texture_descriptors(context);
 		context->state.dirty.bit.fragment_textures = false;
+	}
+
+	if (context->state.dirty.bit.vertex_default_uniform) {
+		dkCmdBufBindStorageBuffer(
+		    context->cmdbuf, DkStage_Vertex, 0,
+		    context->state.vertex_default_uniform.gpu_addr,
+		    vertex_program->programId->programHeader->default_uniform_buffer_count *
+			sizeof(float));
+
+		context->state.vertex_default_uniform.allocated = false;
+		context->state.dirty.bit.vertex_default_uniform = false;
+	}
+
+	if (context->state.dirty.bit.fragment_default_uniform) {
+		dkCmdBufBindStorageBuffer(
+		    context->cmdbuf, DkStage_Fragment, 1,
+		    context->state.fragment_default_uniform.gpu_addr,
+		    fragment_program->programId->programHeader->default_uniform_buffer_count *
+			sizeof(float));
+
+		context->state.fragment_default_uniform.allocated = false;
+		context->state.dirty.bit.fragment_default_uniform = false;
 	}
 }
 
