@@ -141,7 +141,7 @@ static int load_vpk(Jit *jit, const void *data, uint32_t size, void **entry)
 	if (status == MZ_FALSE)
 		return -1;
 
-	LOG("Found an ZIP file (VPK), extracting eboot.bin.");
+	LOG("Found a ZIP file (VPK), extracting eboot.bin.");
 
 	eboot_bin = mz_zip_reader_extract_file_to_heap(&zip_archive, "eboot.bin", &uncompressed_size, 0);
 	if (!eboot_bin) {

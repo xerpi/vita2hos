@@ -15,7 +15,7 @@ static inline uint32_t display_pixelformat_bytes_per_pixel(SceDisplayPixelFormat
 	case SCE_DISPLAY_PIXELFORMAT_A8B8G8R8:
 		return 4;
 	default:
-		assert(0);
+		UNREACHABLE("Unsupported SceDisplayPixelFormat");
 	}
 }
 
@@ -25,7 +25,7 @@ static inline DkImageFormat display_pixelformat_to_dk_image_format(SceDisplayPix
 	case SCE_DISPLAY_PIXELFORMAT_A8B8G8R8:
 		return DkImageFormat_RGBA8_Unorm;
 	default:
-		assert(0);
+		UNREACHABLE("Unsupported SceDisplayPixelFormat");
 	}
 }
 
@@ -38,7 +38,7 @@ static inline uint32_t gxm_color_surface_type_to_dk_image_flags(SceGxmColorSurfa
 	case SCE_GXM_COLOR_SURFACE_SWIZZLED:
 		return DkImageFlags_BlockLinear | DkImageFlags_HwCompression;
 	default:
-		assert(0);
+		UNREACHABLE("Unsupported SceGxmColorSurfaceType");
 	}
 }
 
@@ -77,7 +77,7 @@ static inline size_t gxm_color_base_format_bits_per_pixel(SceGxmColorBaseFormat 
 	case SCE_GXM_COLOR_BASE_FORMAT_F32F32:
 		return 64;
 	default:
-		assert(0);
+		UNREACHABLE("Unsupported SceGxmColorBaseFormat");
 	}
 }
 
@@ -163,7 +163,7 @@ static inline size_t gxm_texture_base_format_bytes_per_pixel(SceGxmTextureBaseFo
 	case SCE_GXM_TEXTURE_BASE_FORMAT_U2F10F10F10:
 		return 32;
 	default:
-		assert(0);
+		UNREACHABLE("Unsupported SceGxmTextureBaseFormat");
 	}
 }
 
@@ -178,7 +178,7 @@ static inline DkImageFormat gxm_color_format_to_dk_image_format(SceGxmColorForma
 	case SCE_GXM_COLOR_FORMAT_U8U8U8U8_ABGR:
 		return DkImageFormat_RGBA8_Unorm;
 	default:
-		assert(0);
+		UNREACHABLE("Unsupported SceGxmColorFormat");
 	}
 }
 
@@ -201,7 +201,7 @@ static inline DkVtxAttribType gxm_to_dk_vtx_attrib_type(SceGxmAttributeFormat fo
 	case SCE_GXM_ATTRIBUTE_FORMAT_F32:
 		return DkVtxAttribType_Float;
 	default:
-		assert(0);
+		UNREACHABLE("Unsupported SceGxmAttributeFormat");
 	}
 }
 
@@ -223,7 +223,7 @@ static inline DkVtxAttribSize gxm_to_dk_vtx_attrib_size(SceGxmAttributeFormat fo
 		case 4:
 			return DkVtxAttribSize_4x8;
 		default:
-			assert(0);
+			UNREACHABLE("Unsupported SceGxmAttributeFormat component count");
 		}
 	case SCE_GXM_ATTRIBUTE_FORMAT_U16:
 	case SCE_GXM_ATTRIBUTE_FORMAT_S16:
@@ -240,7 +240,7 @@ static inline DkVtxAttribSize gxm_to_dk_vtx_attrib_size(SceGxmAttributeFormat fo
 		case 4:
 			return DkVtxAttribSize_4x16;
 		default:
-			assert(0);
+			UNREACHABLE("Unsupported SceGxmAttributeFormat component count");
 		}
 	case SCE_GXM_ATTRIBUTE_FORMAT_F32:
 		switch (componentCount) {
@@ -253,10 +253,10 @@ static inline DkVtxAttribSize gxm_to_dk_vtx_attrib_size(SceGxmAttributeFormat fo
 		case 4:
 			return DkVtxAttribSize_4x32;
 		default:
-			assert(0);
+			UNREACHABLE("Unsupported SceGxmAttributeFormat component count");
 		}
 	default:
-		assert(0);
+		UNREACHABLE("Unsupported SceGxmAttributeFormat");
 	}
 }
 
@@ -276,7 +276,7 @@ static inline DkPrimitive gxm_to_dk_primitive(SceGxmPrimitiveType prim)
 	case SCE_GXM_PRIMITIVE_TRIANGLE_EDGES:
 		return DkPrimitive_Triangles;
 	default:
-		assert(0);
+		UNREACHABLE("Unsupported SceGxmPrimitiveType");
 	}
 }
 
@@ -288,7 +288,7 @@ static inline DkIdxFormat gxm_to_dk_idx_format(SceGxmIndexFormat format)
 	case SCE_GXM_INDEX_FORMAT_U32:
 		return DkIdxFormat_Uint32;
 	default:
-		assert(0);
+		UNREACHABLE("Unsupported SceGxmIndexFormat");
 	}
 }
 
@@ -312,7 +312,7 @@ static inline DkCompareOp gxm_depth_func_to_dk_compare_op(SceGxmDepthFunc func)
 	case SCE_GXM_DEPTH_FUNC_ALWAYS:
 		return DkCompareOp_Always;
 	default:
-		assert(0);
+		UNREACHABLE("Unsupported SceGxmDepthFunc");
 	}
 }
 
@@ -336,7 +336,7 @@ static inline DkCompareOp gxm_stencil_func_to_dk_compare_op(SceGxmStencilFunc fu
 	case SCE_GXM_STENCIL_FUNC_ALWAYS:
 		return DkCompareOp_Always;
 	default:
-		assert(0);
+		UNREACHABLE("Unsupported SceGxmStencilFunc");
 	}
 }
 
@@ -360,7 +360,7 @@ static inline DkStencilOp gxm_stencil_op_to_dk_stencil_op(SceGxmStencilOp op)
 	case SCE_GXM_STENCIL_OP_DECR_WRAP:
 		return DkStencilOp_DecrWrap;
 	default:
-		assert(0);
+		UNREACHABLE("Unsupported SceGxmStencilOp");
 	}
 }
 
@@ -376,13 +376,14 @@ static inline DkWrapMode gxm_texture_addr_mode_to_dk_wrap_mode(SceGxmTextureAddr
 	case SCE_GXM_TEXTURE_ADDR_MIRROR_CLAMP:
 		return DkWrapMode_MirrorClamp;
 	case SCE_GXM_TEXTURE_ADDR_REPEAT_IGNORE_BORDER:
-		assert(0);
+		UNREACHABLE(
+		    "Unsupported SceGxmTextureAddrMode SCE_GXM_TEXTURE_ADDR_REPEAT_IGNORE_BORDER");
 	case SCE_GXM_TEXTURE_ADDR_CLAMP_FULL_BORDER:
 		return DkWrapMode_ClampToBorder;
 	case SCE_GXM_TEXTURE_ADDR_CLAMP_IGNORE_BORDER:
 	case SCE_GXM_TEXTURE_ADDR_CLAMP_HALF_BORDER:
 	default:
-		assert(0);
+		UNREACHABLE("Unsupported SceGxmTextureAddrMode");
 	}
 }
 
@@ -394,7 +395,7 @@ static inline DkFilter gxm_texture_filter_to_dk_filter(SceGxmTextureFilter filte
 	case SCE_GXM_TEXTURE_FILTER_LINEAR:
 		return DkFilter_Linear;
 	default:
-		assert(0);
+		UNREACHABLE("Unsupported SceGxmTextureFilter");
 	}
 }
 

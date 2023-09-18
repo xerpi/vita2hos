@@ -7,6 +7,7 @@
 #include <sstream>
 #include <string>
 #include <fmt/core.h>
+#include <fmt/format.h>
 
 #include <gxm/types.h>
 

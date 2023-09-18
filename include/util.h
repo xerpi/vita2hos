@@ -23,6 +23,12 @@
 #define NORETURN __attribute__((noreturn))
 #endif
 
+#define UNREACHABLE(str)                 \
+	do {                             \
+		assert(!"" str);         \
+		__builtin_unreachable(); \
+	} while (0)
+
 static inline uint32_t next_pow2(uint32_t x)
 {
 	uint32_t val = 1;

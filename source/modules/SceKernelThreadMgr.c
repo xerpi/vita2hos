@@ -82,6 +82,7 @@ static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int in
 	if (R_FAILED(res)) {
 		LOG("Error creating thread: 0x%" PRIx32, res);
 		free(ti->vita_tls);
+		thread_info_release(ti);
 		return SCE_KERNEL_ERROR_THREAD_ERROR;
 	}
 
