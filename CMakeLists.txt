@@ -111,6 +111,8 @@ target_link_directories(vita2hos PRIVATE
 target_link_options(vita2hos PRIVATE
     -specs=${NX_ROOT}/switch32.specs
     -Wl,-Map,${CMAKE_PROJECT_NAME}.map
+    # pthread_cancel gets removed otherwise, which makes __ghtread_active_p() fail
+    -Wl,-u,pthread_cancel
 )
 
 find_program(NX_ELF2NSO_EXE NAMES elf2nso HINTS "${DEVKITPRO}/tools/bin")
