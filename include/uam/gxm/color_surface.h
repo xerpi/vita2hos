@@ -1,7 +1,10 @@
 #pragma once
 
-#include <psp2/gxm.h>
+// Include Vulkan headers first
 #include <vulkan/vulkan.h>
+
+// Then include platform-specific headers
+#include <psp2/gxm.h>
 
 namespace uam {
 namespace gxm {

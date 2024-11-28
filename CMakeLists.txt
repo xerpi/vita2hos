@@ -24,6 +24,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Set Vulkan paths explicitly
+set(Vulkan_INCLUDE_DIR "/usr/include/vulkan")
+set(Vulkan_LIBRARY "/usr/lib/x86_64-linux-gnu/libvulkan.so")
+
 # Find Vulkan package
 find_package(Vulkan REQUIRED)
 
@@ -78,6 +82,14 @@ add_executable(vita2hos
     Vita3K/external/miniz/miniz.c
 )
 
+# Добавляем флаги для предотвращения конфликтов заголовочных файлов
+add_compile_options(-include ${CMAKE_SOURCE_DIR}/include/compiler_compat.h)
+
+# Добавляем флаги для использования заголовков devkitA64
+add_compile_options(-isystem /opt/devkitpro/devkitA64/aarch64-none-elf/include)
+add_compile_options(-isystem /opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/14.2.0/include)
+add_compile_options(-isystem /opt/devkitpro/libnx/include)
+
 target_include_directories(vita2hos PRIVATE
     include
     include/vita3k
@@ -92,6 +104,7 @@ target_include_directories(vita2hos PRIVATE
     ${NX_ROOT}/include/uam/mesa-imported
     ${NX_ROOT}/include/uam
     ${Vulkan_INCLUDE_DIRS}
+    /usr/include
 )
 
 target_compile_options(vita2hos PRIVATE
