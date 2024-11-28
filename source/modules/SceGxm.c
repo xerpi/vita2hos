@@ -16,6 +16,7 @@
 #include "util.h"
 #include "vita3k_shader_recompiler_iface_c.h"
 #include "vita_to_dk.h"
+#include <uam/gxm/color_surface.h>
 
 #define DUMP_SHADER_SPIRV	0
 #define DUMP_SHADER_GLSL	0
@@ -877,20 +878,8 @@ EXPORT(SceGxm, 0xED0F6E25, int, sceGxmColorSurfaceInit, SceGxmColorSurface *surf
 			   unsigned int width, unsigned int height,
 			   unsigned int strideInPixels, void *data)
 {
-	SceGxmColorSurfaceInner *inner = (SceGxmColorSurfaceInner *)surface;
-
-	memset(inner, 0, sizeof(*inner));
-	inner->disabled = 0;
-	inner->downscale = scaleMode == SCE_GXM_COLOR_SURFACE_SCALE_MSAA_DOWNSCALE;
-	inner->width = width;
-	inner->height = height;
-	inner->strideInPixels = strideInPixels;
-	inner->data = data;
-	inner->colorFormat = colorFormat;
-	inner->surfaceType = surfaceType;
-	inner->outputRegisterSize = outputRegisterSize;
-
-	return 0;
+    return uam_gxm_init_color_surface(surface, colorFormat, surfaceType, scaleMode,
+                                    outputRegisterSize, width, height, strideInPixels, data);
 }
 
 EXPORT(SceGxm, 0xCA9D41D1, int, sceGxmDepthStencilSurfaceInit, SceGxmDepthStencilSurface *surface,
@@ -1008,19 +997,18 @@ EXPORT(SceGxm, 0x1A68C8D2, void, sceGxmSetBackStencilFunc, SceGxmContext *contex
 static inline void dk_image_view_for_gxm_color_surface(DkImage *image, DkImageView *view, DkMemBlock block,
 						       const SceGxmColorSurfaceInner *surface)
 {
-	DkImageLayoutMaker maker;
-	DkImageLayout layout;
+    uint32_t width, height;
+    uam_gxm_get_surface_dimensions((const SceGxmColorSurface *)surface, &width, &height);
+    
+    DkImageLayout layout;
+    dkImageLayoutInitialize(&layout, DkImageType_2D);
+    dkImageLayoutSetFlags(&layout, gxm_color_surface_type_to_dk_image_flags(uam_gxm_get_surface_type((const SceGxmColorSurface *)surface)));
+    dkImageLayoutSetFormat(&layout, gxm_color_format_to_dk_format(uam_gxm_get_surface_format((const SceGxmColorSurface *)surface)));
+    dkImageLayoutSetDimensions(&layout, width, height, 1);
 
-	dkImageLayoutMakerDefaults(&maker, g_dk_device);
-	maker.flags = gxm_color_surface_type_to_dk_image_flags(surface->surfaceType) |
-		      DkImageFlags_UsageRender | DkImageFlags_Usage2DEngine;
-	maker.format = gxm_color_format_to_dk_image_format(surface->colorFormat);
-	maker.dimensions[0] = surface->width;
-	maker.dimensions[1] = surface->height;
-	maker.pitchStride = surface->strideInPixels * gxm_color_format_bytes_per_pixel(surface->colorFormat);
-	dkImageLayoutInitialize(&layout, &maker);
-	dkImageInitialize(image, &layout, block, dk_memblock_cpu_addr_offset(block, surface->data));
-	dkImageViewDefaults(view, image);
+    dkImageInitialize(image, &layout);
+    dkImageViewInitialize(view, image, &layout, DK_IMAGE_VIEW_TYPE_2D, DK_IMAGE_VIEW_BASE_LAYER(0), DK_IMAGE_VIEW_NUM_LAYERS(1));
+    dkImageViewSetSwizzle(view, DK_SWIZZLE_COMPONENT_R, DK_SWIZZLE_COMPONENT_G, DK_SWIZZLE_COMPONENT_B, DK_SWIZZLE_COMPONENT_A);
 }
 
 static inline void dk_image_view_for_gxm_depth_stencil_surface(DkImage *image, DkImageView *view,
@@ -1118,84 +1106,36 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
 		     const SceGxmColorSurface *colorSurface,
 		     const SceGxmDepthStencilSurface *depthStencil)
 {
-	DkMemBlock color_surface_block;
-	DkImage color_surface_image;
-	DkImageView color_surface_view;
-	uint16_t rt_width = renderTarget->params.width;
-	uint16_t rt_height = renderTarget->params.height;
-	DkViewport viewport = { 0.0f, 0.0f, (float)rt_width, (float)rt_height, 0.0f, 1.0f };
-	DkScissor scissor = { 0, 0, rt_width, rt_height };
-	SceGxmColorSurfaceInner *color_surface_inner = (SceGxmColorSurfaceInner *)colorSurface;
+    if (!context || !renderTarget || !colorSurface)
+        return SCE_GXM_ERROR_INVALID_POINTER;
 
-	if (context->state.in_scene)
-		return SCE_GXM_ERROR_WITHIN_SCENE;
+    if (uam_gxm_is_surface_disabled(colorSurface))
+        return SCE_GXM_ERROR_INVALID_VALUE;
 
-	color_surface_block = SceSysmem_get_dk_memblock_for_addr(color_surface_inner->data);
-	if (!color_surface_block)
-		return SCE_GXM_ERROR_INVALID_VALUE;
+    uint32_t width, height;
+    uam_gxm_get_surface_dimensions(colorSurface, &width, &height);
 
-	if (depthStencil) {
-		if ((context->state.shadow_ds_surface.width != rt_width) ||
-		    (context->state.shadow_ds_surface.height != rt_height))
-			ensure_shadow_ds_surface(context, rt_width, rt_height);
+    // Set up render target
+    context->current_render_target = renderTarget;
+    context->color_surface = colorSurface;
+    context->depth_stencil_surface = depthStencil;
 
-#if 0
-		depth_stencil_surface_block = SceSysmem_get_dk_memblock_for_addr(depthStencil->depthData);
-		if (!depth_stencil_surface_block)
-			return SCE_GXM_ERROR_INVALID_VALUE;
+    // Create shadow depth-stencil surface if needed
+    if (!depthStencil) {
+        ensure_shadow_ds_surface(context, width, height);
+    }
 
-		dk_image_view_for_gxm_depth_stencil_surface(&depth_stencil_surface_image,
-							    &depth_stencil_surface_view,
-							    depth_stencil_surface_block,
-							    rt_width, rt_height,
-							    depthStencil);
-#endif
-	}
+    // Begin command recording
+    dkCmdBufClear(&context->cmdbuf);
+    dkCmdBufBindRenderTargets(&context->cmdbuf, 1, &colorSurface, depthStencil);
 
-	LOG("sceGxmBeginScene to renderTarget %p, fragmentSyncObject: %p, "
-	    "w: %" PRId32 ", h: %" PRId32 ", stride: %" PRId32 ", CPU addr: %p",
-		renderTarget, fragmentSyncObject,
-		color_surface_inner->width, color_surface_inner->height,
-		color_surface_inner->strideInPixels,
-		dkMemBlockGetCpuAddr(color_surface_block));
+    // Set viewport and scissor
+    DkViewport viewport = { 0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f };
+    DkScissor scissor = { 0, 0, width, height };
+    dkCmdBufSetViewports(&context->cmdbuf, 0, 1, &viewport);
+    dkCmdBufSetScissors(&context->cmdbuf, 0, 1, &scissor);
 
-	dk_image_view_for_gxm_color_surface(&color_surface_image, &color_surface_view,
-					    color_surface_block, color_surface_inner);
-
-	dkCmdBufClear(context->cmdbuf);
-
-	dkCmdBufBindRenderTarget(context->cmdbuf, &color_surface_view,
-				 depthStencil ? &context->state.shadow_ds_surface.view : NULL);
-
-	dkCmdBufSetViewports(context->cmdbuf, 0, &viewport, 1);
-	dkCmdBufSetScissors(context->cmdbuf, 0, &scissor, 1);
-	dkCmdBufBindRasterizerState(context->cmdbuf, &context->state.rasterizer);
-	dkCmdBufBindColorState(context->cmdbuf, &context->state.color);
-	set_vita3k_gxm_uniform_blocks(context, &viewport);
-
-	context->state.vertex_rb.head = 0;
-	context->state.fragment_rb.head = 0;
-
-	/* Wait until the framebuffer is swapped out before writing to it */
-	if (fragmentSyncObject)
-		dkCmdBufWaitFence(context->cmdbuf, &fragmentSyncObject->fence);
-
-	if (depthStencil &&
-	    !(depthStencil->zlsControl & SCE_GXM_DEPTH_STENCIL_FORCE_LOAD_ENABLED)) {
-		dkCmdBufClearDepthStencil(
-		    context->cmdbuf, true, depthStencil->backgroundDepth, 0xFF,
-		    depthStencil->zlsControl & SCE_GXM_DEPTH_STENCIL_BG_CTRL_STENCIL_MASK);
-	}
-
-	context->state.discard_stencil =
-	    depthStencil && !(depthStencil->zlsControl & SCE_GXM_DEPTH_STENCIL_FORCE_STORE_ENABLED);
-
-	/* Mark all state as dirty to make sure we bind everything before the first draw call */
-	context->state.dirty.raw = ~(uint32_t)0;
-
-	context->state.in_scene = true;
-
-	return 0;
+    return SCE_GXM_OK;
 }
 
 EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context, const SceGxmNotification *vertexNotification,

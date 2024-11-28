@@ -16,7 +16,7 @@ project(
 )
 
 # Overwrite libnx location
-set(NX_ROOT ${DEVKITPRO}/libnx32)
+set(NX_ROOT ${DEVKITPRO}/libnx)
 
 include(Platform/NintendoSwitch)
 
@@ -24,9 +24,19 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(VITASDK_INCLUDE $ENV{VITASDK}/arm-vita-eabi/include)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${NX_ARCH_SETTINGS} ${NX_COMMON_FLAGS} -idirafter ${VITASDK_INCLUDE}")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${NX_ARCH_SETTINGS} ${NX_COMMON_FLAGS} -idirafter ${VITASDK_INCLUDE}")
+# Find Vulkan package
+find_package(Vulkan REQUIRED)
+
+if(DEFINED ENV{VITASDK})
+    set(VITASDK $ENV{VITASDK})
+    set(VITASDK_INCLUDE ${VITASDK}/arm-vita-eabi/include)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${NX_ARCH_SETTINGS} ${NX_COMMON_FLAGS} -idirafter ${VITASDK_INCLUDE}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${NX_ARCH_SETTINGS} ${NX_COMMON_FLAGS} -idirafter ${VITASDK_INCLUDE}")
+else()
+    message(WARNING "VITASDK not found, using only Switch toolchain")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${NX_ARCH_SETTINGS} ${NX_COMMON_FLAGS}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${NX_ARCH_SETTINGS} ${NX_COMMON_FLAGS}")
+endif()
 
 add_executable(vita2hos
     source/load.c
@@ -43,6 +53,7 @@ add_executable(vita2hos
     source/modules/SceLibKernel.c
     source/modules/SceSysmem.c
     source/modules/SceTouch.c
+    src/uam/gxm/color_surface.cpp
     Vita3K/vita3k/gxm/src/attributes.cpp
     Vita3K/vita3k/gxm/src/color.cpp
     Vita3K/vita3k/gxm/src/gxp.cpp
@@ -64,18 +75,23 @@ add_executable(vita2hos
     Vita3K/vita3k/shader/src/usse_program_analyzer.cpp
     Vita3K/vita3k/shader/src/usse_translator_entry.cpp
     Vita3K/vita3k/shader/src/usse_utilities.cpp
+    Vita3K/external/miniz/miniz.c
 )
 
 target_include_directories(vita2hos PRIVATE
     include
     include/vita3k
+    include/uam
     Vita3K/vita3k/gxm/include
     Vita3K/vita3k/shader/include
     Vita3K/vita3k/features/include
     Vita3K/vita3k/util/include
+    Vita3K/external/miniz
     ${NX_ROOT}/include/spirv_cross
     ${NX_ROOT}/include/glslang
     ${NX_ROOT}/include/uam/mesa-imported
+    ${NX_ROOT}/include/uam
+    ${Vulkan_INCLUDE_DIRS}
 )
 
 target_compile_options(vita2hos PRIVATE
@@ -90,15 +106,14 @@ target_compile_definitions(vita2hos PRIVATE
 )
 
 target_link_libraries(vita2hos PRIVATE
-    SPIRV
-    spirv-cross-c
+    ${Vulkan_LIBRARIES}
     spirv-cross-core
-    spirv-cross-cpp
     spirv-cross-glsl
+    spirv-cross-hlsl
+    spirv-cross-cpp
     spirv-cross-reflect
     spirv-cross-util
     glslang
-    fmt
     uam
     miniz
     deko3dd

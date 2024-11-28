@@ -68,3 +68,5 @@ build/
 
 # CMake
 !CMakeLists.txt
+*tar.gz
+Vita3K/
