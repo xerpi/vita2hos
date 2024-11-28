@@ -1,7 +1,7 @@
 #pragma once
 
 // Include Vulkan headers first
-#include <vulkan/vulkan.h>
+#include "vulkan.h"
 
 // Then include platform-specific headers
 #include <psp2/gxm.h>

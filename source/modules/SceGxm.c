@@ -3,6 +3,7 @@
 #include <deko3d.h>
 #include <psp2/kernel/error.h>
 #include <psp2/kernel/threadmgr.h>
+#include "gxm_surface.h"
 #include <psp2/gxm.h>
 #include "modules/SceGxm.h"
 #include "modules/SceSysmem.h"
@@ -82,6 +83,20 @@ typedef struct {
 } SceGxmTextureInner;
 static_assert(sizeof(SceGxmTextureInner) == sizeof(SceGxmTexture), "Incorrect size");
 
+typedef struct SceGxmColorSurface {
+    uint32_t disabled;
+    uint32_t downscale;
+    uint32_t gamma;
+    uint32_t width;
+    uint32_t height;
+    uint32_t strideInPixels;
+    void *data;
+    SceGxmColorFormat colorFormat;
+    SceGxmColorSurfaceType surfaceType;
+    uint32_t outputRegisterSize;
+    SceGxmTexture backgroundTex;
+} SceGxmColorSurface;
+
 typedef struct {
 	// opaque start
 	uint32_t disabled : 1;
@@ -100,176 +115,25 @@ typedef struct {
 static_assert(sizeof(SceGxmColorSurfaceInner) == sizeof(SceGxmColorSurface), "Incorrect size");
 
 typedef struct SceGxmContext {
-	SceGxmContextParams params;
-	DkMemBlock cmdbuf_memblock;
-	DkCmdBuf cmdbuf;
-	struct {
-		DkMemBlock memblock;
-		uint32_t size;
-	} vertex_rb, fragment_rb;
-	DkMemBlock gxm_vert_unif_block_memblock;
-	DkMemBlock gxm_frag_unif_block_memblock;
-	DkMemBlock fragment_tex_descriptor_set_memblock;
-	/* Dynamic state */
-	struct {
-		struct {
-			uint32_t head;
-		} vertex_rb, fragment_rb;
-		const SceGxmVertexProgram *vertex_program;
-		const SceGxmFragmentProgram *fragment_program;
-		bool in_scene;
-		bool two_sided_mode;
-		bool discard_stencil;
-		DkRasterizerState rasterizer;
-		DkColorState color;
-		DkColorWriteState color_write;
-		DkDepthStencilState depth_stencil;
-		struct {
-			uint8_t ref;
-			uint8_t compare_mask;
-			uint8_t write_mask;
-		} front_stencil, back_stencil;
-		SceGxmTextureInner fragment_textures[SCE_GXM_MAX_TEXTURE_UNITS];
-		struct {
-			uint16_t width;
-			uint16_t height;
-			uint32_t size;
-			DkMemBlock memblock;
-			DkImage image;
-			DkImageView view;
-		} shadow_ds_surface;
-		struct {
-			void *cpu_addr;
-			DkGpuAddr gpu_addr;
-			bool allocated;
-		} vertex_default_uniform, fragment_default_uniform;
-		/* Dirty state tracking */
-		union {
-			struct {
-				uint32_t shaders : 1;
-				uint32_t depth_stencil : 1;
-				uint32_t front_stencil : 1;
-				uint32_t back_stencil : 1;
-				uint32_t color_write : 1;
-				uint32_t fragment_textures : 1;
-				uint32_t vertex_default_uniform : 1;
-				uint32_t fragment_default_uniform : 1;
-			} bit;
-			uint32_t raw;
-		} dirty;
-	} state;
+    DkCmdBuf cmdbuf;
+    DkMemBlock memblock;
+    const SceGxmRenderTarget *render_target;
+    const SceGxmColorSurface *color_surface;
+    const SceGxmDepthStencilSurface *depth_stencil_surface;
+    DkImage color_image;
+    struct {
+        struct {
+            uint32_t vertex_program : 1;
+            uint32_t fragment_program : 1;
+            uint32_t vertex_uniform_buffers : 1;
+            uint32_t fragment_uniform_buffers : 1;
+            uint32_t fragment_textures : 1;
+            uint32_t depth_stencil : 1;
+            uint32_t back_stencil : 1;
+        } bit;
+        uint32_t raw;
+    } state;
 } SceGxmContext;
-static_assert(sizeof(SceGxmContext) <= SCE_GXM_MINIMUM_CONTEXT_HOST_MEM_SIZE, "Oversized SceGxmContext");
-
-typedef struct SceGxmSyncObject {
-	DkFence fence;
-} SceGxmSyncObject;
-
-typedef struct SceGxmRegisteredProgram {
-	const SceGxmProgram *programHeader;
-} SceGxmRegisteredProgram;
-
-typedef struct SceGxmShaderPatcher {
-	SceGxmShaderPatcherParams params;
-	SceGxmShaderPatcherId *registered_programs;
-	uint32_t registered_count;
-} SceGxmShaderPatcher;
-
-typedef struct SceGxmVertexProgram {
-	SceGxmShaderPatcherId programId;
-	SceGxmVertexAttribute *attributes;
-	unsigned int attributeCount;
-	SceGxmVertexStream *streams;
-	unsigned int streamCount;
-	DkShader dk_shader;
-} SceGxmVertexProgram;
-
-typedef struct SceGxmFragmentProgram {
-	SceGxmShaderPatcherId programId;
-	SceGxmOutputRegisterFormat outputFormat;
-	SceGxmMultisampleMode multisampleMode;
-	SceGxmBlendInfo blendInfo;
-	DkShader dk_shader;
-} SceGxmFragmentProgram;
-
-typedef struct SceGxmRenderTarget {
-	SceGxmRenderTargetParams params;
-} SceGxmRenderTarget;
-
-typedef struct SceGxmProgram {
-	uint32_t magic; // should be "GXP\0"
-
-	uint8_t major_version; //min 1
-	uint8_t minor_version; //min 4
-	uint16_t sdk_version; // 0x350 - 3.50
-
-	uint32_t size; //size of file - ignoring padding bytes at the end after SceGxmProgramParameter table
-
-	uint32_t binary_guid;
-	uint32_t source_guid;
-
-	uint32_t program_flags;
-
-	uint32_t buffer_flags; // Buffer flags. 2 bits per buffer. 0x1 - loaded into registers. 0x2 - read from memory
-
-	uint32_t texunit_flags[2]; // Tex unit flags. 4 bits per tex unit. 0x1 is non dependent read, 0x2 is dependent.
-
-	uint32_t parameter_count;
-	uint32_t parameters_offset; // Number of bytes from the start of this field to the first parameter.
-	uint32_t varyings_offset; // offset to vertex outputs / fragment inputs, relative to this field
-
-	uint16_t primary_reg_count; // (PAs)
-	uint16_t secondary_reg_count; // (SAs)
-	uint32_t temp_reg_count1;
-	uint16_t temp_reg_count2; //Temp reg count in selective rate(programmable blending) phase
-
-	uint16_t primary_program_phase_count;
-	uint32_t primary_program_instr_count;
-	uint32_t primary_program_offset;
-
-	uint32_t secondary_program_instr_count;
-	uint32_t secondary_program_offset; // relative to the beginning of this field
-	uint32_t secondary_program_offset_end; // relative to the beginning of this field
-
-	uint32_t scratch_buffer_count;
-	uint32_t thread_buffer_count;
-	uint32_t literal_buffer_count;
-
-	uint32_t data_buffer_count;
-	uint32_t texture_buffer_count;
-	uint32_t default_uniform_buffer_count;
-
-	uint32_t literal_buffer_data_offset;
-
-	uint32_t compiler_version; // The version is shifted 4 bits to the left.
-
-	uint32_t literals_count;
-	uint32_t literals_offset;
-	uint32_t uniform_buffer_count;
-	uint32_t uniform_buffer_offset;
-
-	uint32_t dependent_sampler_count;
-	uint32_t dependent_sampler_offset;
-	uint32_t texture_buffer_dependent_sampler_count;
-	uint32_t texture_buffer_dependent_sampler_offset;
-	uint32_t container_count;
-	uint32_t container_offset;
-	uint32_t sampler_query_info_offset; // Offset to array of uint16_t
-} SceGxmProgram;
-
-typedef struct SceGxmProgramParameter {
-	int32_t name_offset; // Number of bytes from the start of this structure to the name string.
-	struct {
-		uint16_t category : 4; // SceGxmParameterCategory
-		uint16_t type : 4; // SceGxmParameterType - applicable for constants, not applicable for samplers (select type like float, half, fixed ...)
-		uint16_t component_count : 4; // applicable for constants, not applicable for samplers (select size like float2, float3, float3 ...)
-		uint16_t container_index : 4; // applicable for constants, not applicable for samplers (buffer, default, texture)
-	};
-	uint8_t semantic; // applicable only for for vertex attributes, for everything else it's 0
-	uint8_t semantic_index;
-	uint32_t array_size;
-	int32_t resource_index;
-} SceGxmProgramParameter;
 
 typedef struct {
 	DkFence *new_fence;
@@ -995,26 +859,31 @@ EXPORT(SceGxm, 0x1A68C8D2, void, sceGxmSetBackStencilFunc, SceGxmContext *contex
 }
 
 static inline void dk_image_view_for_gxm_color_surface(DkImage *image, DkImageView *view, DkMemBlock block,
-						       const SceGxmColorSurfaceInner *surface)
+                                     const SceGxmColorSurfaceInner *surface)
 {
     uint32_t width, height;
-    uam_gxm_get_surface_dimensions((const SceGxmColorSurface *)surface, &width, &height);
-    
     DkImageLayout layout;
-    dkImageLayoutInitialize(&layout, DkImageType_2D);
-    dkImageLayoutSetFlags(&layout, gxm_color_surface_type_to_dk_image_flags(uam_gxm_get_surface_type((const SceGxmColorSurface *)surface)));
-    dkImageLayoutSetFormat(&layout, gxm_color_format_to_dk_format(uam_gxm_get_surface_format((const SceGxmColorSurface *)surface)));
-    dkImageLayoutSetDimensions(&layout, width, height, 1);
+    DkImageLayoutMaker layout_maker;
 
-    dkImageInitialize(image, &layout);
-    dkImageViewInitialize(view, image, &layout, DK_IMAGE_VIEW_TYPE_2D, DK_IMAGE_VIEW_BASE_LAYER(0), DK_IMAGE_VIEW_NUM_LAYERS(1));
-    dkImageViewSetSwizzle(view, DK_SWIZZLE_COMPONENT_R, DK_SWIZZLE_COMPONENT_G, DK_SWIZZLE_COMPONENT_B, DK_SWIZZLE_COMPONENT_A);
+    uam_gxm_get_surface_dimensions((const SceGxmColorSurface *)surface, &width, &height);
+
+    dkImageLayoutMakerDefaults(&layout_maker, g_dk_device);
+    dkImageLayoutMakerSetType(&layout_maker, DkImageType_2D);
+    dkImageLayoutMakerSetFlags(&layout_maker, gxm_color_surface_type_to_dk_image_flags(uam_gxm_get_surface_type((const SceGxmColorSurface *)surface)));
+    dkImageLayoutMakerSetFormat(&layout_maker, gxm_color_format_to_dk_image_format(uam_gxm_get_surface_format((const SceGxmColorSurface *)surface)));
+    dkImageLayoutMakerSetDimensions(&layout_maker, width, height, 1);
+    dkImageLayoutInitialize(&layout, &layout_maker);
+
+    dkImageInitialize(image, &layout, block, 0);
+
+    dkImageViewDefaults(view, image);
+    dkImageViewSetSwizzle(view, DkComponentSwizzle_R, DkComponentSwizzle_G, DkComponentSwizzle_B, DkComponentSwizzle_A);
 }
 
 static inline void dk_image_view_for_gxm_depth_stencil_surface(DkImage *image, DkImageView *view,
-							       DkMemBlock block,
-							       uint32_t width, uint32_t height,
-							       const SceGxmDepthStencilSurface *surface)
+                                     DkMemBlock block,
+                                     uint32_t width, uint32_t height,
+                                     const SceGxmDepthStencilSurface *surface)
 {
 	DkImageLayoutMaker maker;
 	DkImageLayout layout;
@@ -1025,8 +894,8 @@ static inline void dk_image_view_for_gxm_depth_stencil_surface(DkImage *image, D
 	maker.dimensions[0] = width;
 	maker.dimensions[1] = height;
 	dkImageLayoutInitialize(&layout, &maker);
-	dkImageInitialize(image, &layout, block, dk_memblock_cpu_addr_offset(block, surface->depthData));
-	dkImageViewDefaults(view, image);
+	dkImageInitialize(&image, &layout, block, dk_memblock_cpu_addr_offset(block, surface->depthData));
+	dkImageViewDefaults(&view, &image);
 }
 
 static void set_vita3k_gxm_uniform_blocks(SceGxmContext *context, const DkViewport *viewport)
@@ -1101,41 +970,53 @@ static void ensure_shadow_ds_surface(SceGxmContext *context, uint32_t width, uin
 }
 
 EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsigned int flags,
-		     const SceGxmRenderTarget *renderTarget, const SceGxmValidRegion *validRegion,
-		     SceGxmSyncObject *vertexSyncObject, SceGxmSyncObject *fragmentSyncObject,
-		     const SceGxmColorSurface *colorSurface,
-		     const SceGxmDepthStencilSurface *depthStencil)
+                     const SceGxmRenderTarget *renderTarget, const SceGxmValidRegion *validRegion,
+                     SceGxmSyncObject *vertexSyncObject, SceGxmSyncObject *fragmentSyncObject,
+                     const SceGxmColorSurface *colorSurface,
+                     const SceGxmDepthStencilSurface *depthStencil)
 {
-    if (!context || !renderTarget || !colorSurface)
+    if (!context || !renderTarget)
         return SCE_GXM_ERROR_INVALID_POINTER;
 
     if (uam_gxm_is_surface_disabled(colorSurface))
         return SCE_GXM_ERROR_INVALID_VALUE;
 
-    uint32_t width, height;
-    uam_gxm_get_surface_dimensions(colorSurface, &width, &height);
-
-    // Set up render target
-    context->current_render_target = renderTarget;
+    // Store render target and surfaces
+    context->render_target = renderTarget;
     context->color_surface = colorSurface;
     context->depth_stencil_surface = depthStencil;
 
-    // Create shadow depth-stencil surface if needed
-    if (!depthStencil) {
-        ensure_shadow_ds_surface(context, width, height);
+    // Clear command buffer
+    dkCmdBufClear(context->cmdbuf);
+
+    // Set up render targets
+    DkImageView color_view;
+    if (colorSurface) {
+        dk_image_view_for_gxm_color_surface(&context->color_image, &color_view, context->memblock,
+                                          (const SceGxmColorSurfaceInner *)colorSurface);
+        dkCmdBufBindRenderTargets(context->cmdbuf, 1, &color_view, NULL);
     }
 
-    // Begin command recording
-    dkCmdBufClear(&context->cmdbuf);
-    dkCmdBufBindRenderTargets(&context->cmdbuf, 1, &colorSurface, depthStencil);
-
     // Set viewport and scissor
-    DkViewport viewport = { 0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f };
-    DkScissor scissor = { 0, 0, width, height };
-    dkCmdBufSetViewports(&context->cmdbuf, 0, 1, &viewport);
-    dkCmdBufSetScissors(&context->cmdbuf, 0, 1, &scissor);
+    DkViewport viewport = {
+        .x = 0.0f,
+        .y = 0.0f,
+        .width = (float)renderTarget->width,
+        .height = (float)renderTarget->height,
+        .near = 0.0f,
+        .far = 1.0f
+    };
+    dkCmdBufSetViewport(context->cmdbuf, 0, &viewport);
 
-    return SCE_GXM_OK;
+    DkScissor scissor = {
+        .x = 0,
+        .y = 0,
+        .width = renderTarget->width,
+        .height = renderTarget->height
+    };
+    dkCmdBufSetScissor(context->cmdbuf, 0, &scissor);
+
+    return SCE_OK;
 }
 
 EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context, const SceGxmNotification *vertexNotification,
@@ -1969,4 +1850,39 @@ int SceGxm_init(DkDevice dk_device)
 int SceGxm_finish(void)
 {
 	return 0;
+}
+
+// C wrapper functions for C++ color surface functions
+int uam_gxm_init_color_surface(SceGxmColorSurface *surface,
+                           SceGxmColorFormat colorFormat,
+                           SceGxmColorSurfaceType surfaceType,
+                           SceGxmColorSurfaceScaleMode scaleMode,
+                           SceGxmOutputRegisterSize outputRegisterSize,
+                           uint32_t width,
+                           uint32_t height,
+                           uint32_t strideInPixels,
+                           void *data) {
+    return gxm_init_color_surface(surface, colorFormat, surfaceType, scaleMode,
+                                outputRegisterSize, width, height, strideInPixels, data);
+}
+
+void* uam_gxm_get_surface_data(const SceGxmColorSurface *surface) {
+    return gxm_get_surface_data(surface);
+}
+
+SceGxmColorFormat uam_gxm_get_surface_format(const SceGxmColorSurface *surface) {
+    return gxm_get_surface_format(surface);
+}
+
+SceGxmColorSurfaceType uam_gxm_get_surface_type(const SceGxmColorSurface *surface) {
+    return gxm_get_surface_type(surface);
+}
+
+bool uam_gxm_is_surface_disabled(const SceGxmColorSurface *surface) {
+    return gxm_is_surface_disabled(surface);
+}
+
+void uam_gxm_get_surface_dimensions(const SceGxmColorSurface *surface,
+                                uint32_t *width, uint32_t *height) {
+    gxm_get_surface_dimensions(surface, width, height);
 }

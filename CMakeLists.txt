@@ -24,7 +24,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Set Vulkan paths explicitly
+# Set Vulkan paths
 set(Vulkan_INCLUDE_DIR "/usr/include/vulkan")
 set(Vulkan_LIBRARY "/usr/lib/x86_64-linux-gnu/libvulkan.so")
 
@@ -53,6 +53,7 @@ add_executable(vita2hos
     source/modules/SceCtrl.c
     source/modules/SceDisplay.c
     source/modules/SceGxm.c
+    source/modules/SceGxm_cpp.cpp
     source/modules/SceKernelThreadMgr.c
     source/modules/SceLibKernel.c
     source/modules/SceSysmem.c
@@ -83,28 +84,40 @@ add_executable(vita2hos
 )
 
 # Добавляем флаги для предотвращения конфликтов заголовочных файлов
+add_compile_options(-include ${CMAKE_SOURCE_DIR}/include/compiler_types.h)
 add_compile_options(-include ${CMAKE_SOURCE_DIR}/include/compiler_compat.h)
 
-# Добавляем флаги для использования заголовков devkitA64
+# Добавляем флаги для использования только заголовков devkitA64
+add_compile_options(-nostdinc)
 add_compile_options(-isystem /opt/devkitpro/devkitA64/aarch64-none-elf/include)
 add_compile_options(-isystem /opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/14.2.0/include)
 add_compile_options(-isystem /opt/devkitpro/libnx/include)
+add_compile_options(-isystem /usr/local/vitasdk/arm-vita-eabi/include)  # Добавляем путь к PSP2 заголовкам
+add_compile_options(-isystem /usr/include)  # Для системных заголовков
+add_compile_options(-isystem /usr/include/vulkan)  # Для Vulkan
+
+# Добавляем наши заголовочные файлы
+include_directories(${CMAKE_SOURCE_DIR}/include)
 
 target_include_directories(vita2hos PRIVATE
-    include
     include/vita3k
     include/uam
+    Vita3K/vita3k
     Vita3K/vita3k/gxm/include
     Vita3K/vita3k/shader/include
     Vita3K/vita3k/features/include
     Vita3K/vita3k/util/include
+    Vita3K/external
     Vita3K/external/miniz
     ${NX_ROOT}/include/spirv_cross
     ${NX_ROOT}/include/glslang
     ${NX_ROOT}/include/uam/mesa-imported
     ${NX_ROOT}/include/uam
-    ${Vulkan_INCLUDE_DIRS}
-    /usr/include
+    ${Vulkan_INCLUDE_DIR}
+    /usr/local/vitasdk/arm-vita-eabi/include
+    /opt/devkitpro/devkitA64/aarch64-none-elf/include
+    /opt/devkitpro/devkitA64/lib/gcc/aarch64-none-elf/14.2.0/include
+    /opt/devkitpro/libnx/include
 )
 
 target_compile_options(vita2hos PRIVATE
