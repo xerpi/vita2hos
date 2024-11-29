@@ -47,6 +47,7 @@ add_executable(vita2hos
     source/log.c
     source/main.c
     source/module.c
+    source/mutex.c
     source/uam_compiler_iface_c.cpp
     source/util.c
     source/vita3k_shader_recompiler_iface_c.cpp
