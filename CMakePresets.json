@@ -1,0 +1,46 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 19,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "Debug",
+            "hidden": false,
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build_debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_TOOLCHAIN_FILE": "$env{DEVKITPRO}/cmake/devkitARM.cmake",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "YES",
+                "CMAKE_COLOR_DIAGNOSTICS": "YES"
+            }
+        },
+        {
+            "name": "Release",
+            "hidden": false,
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build_release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_TOOLCHAIN_FILE": "$env{DEVKITPRO}/cmake/devkitARM.cmake",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "YES",
+                "CMAKE_COLOR_DIAGNOSTICS": "YES"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "Debug",
+            "hidden": false,
+            "configurePreset": "Debug"
+        },
+        {
+            "name": "Release",
+            "hidden": false,
+            "configurePreset": "Release"
+        }
+    ]
+}

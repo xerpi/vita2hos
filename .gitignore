@@ -51,12 +51,10 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
-# VS Code
-.vscode
-.devcontainer
-
 # Switch
 build/
+build_debug/
+build_release/
 *.npdm
 *.nso
 *.nsp
