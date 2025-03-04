@@ -24,9 +24,44 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(VITASDK_INCLUDE ${CMAKE_SOURCE_DIR}/vita-headers/include)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${NX_ARCH_SETTINGS} ${NX_COMMON_FLAGS} -idirafter ${VITASDK_INCLUDE}")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${NX_ARCH_SETTINGS} ${NX_COMMON_FLAGS} -idirafter ${VITASDK_INCLUDE}")
+set(VITA_HEADERS ${CMAKE_SOURCE_DIR}/vita-headers)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${NX_ARCH_SETTINGS} ${NX_COMMON_FLAGS} -idirafter ${VITA_HEADERS}/include")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${NX_ARCH_SETTINGS} ${NX_COMMON_FLAGS} -idirafter ${VITA_HEADERS}/include")
+
+add_compile_options(
+    -Wall
+    -Wimplicit-fallthrough=3
+    -Wdouble-promotion
+    -fstack-usage
+    -fdata-sections
+    -ffunction-sections
+)
+
+# Shim libraries for Vita3K
+add_library(vita3k_shim INTERFACE)
+target_include_directories(vita3k_shim INTERFACE include/vita3k)
+
+add_library(util INTERFACE)
+target_link_libraries(util INTERFACE vita3k_shim)
+target_include_directories(util INTERFACE Vita3K/vita3k/util/include)
+
+add_library(features INTERFACE)
+target_link_libraries(features INTERFACE vita3k_shim)
+target_include_directories(features INTERFACE Vita3K/vita3k/features/include)
+
+# Vita3K gxm
+add_subdirectory(Vita3K/vita3k/gxm)
+target_link_libraries(gxm INTERFACE vita3k_shim)
+target_include_directories(gxm PRIVATE
+    include/vita3k
+)
+
+# Vita3K shader
+add_subdirectory(Vita3K/vita3k/shader)
+target_include_directories(shader PRIVATE
+    ${NX_ROOT}/include/spirv_cross
+    ${NX_ROOT}/include/glslang
+)
 
 add_executable(vita2hos
     source/load.c
@@ -43,43 +78,16 @@ add_executable(vita2hos
     source/modules/SceLibKernel.c
     source/modules/SceSysmem.c
     source/modules/SceTouch.c
-    Vita3K/vita3k/gxm/src/attributes.cpp
-    Vita3K/vita3k/gxm/src/color.cpp
-    Vita3K/vita3k/gxm/src/gxp.cpp
-    Vita3K/vita3k/gxm/src/stream.cpp
-    Vita3K/vita3k/gxm/src/textures.cpp
-    Vita3K/vita3k/gxm/src/transfer.cpp
-    Vita3K/vita3k/shader/src/gxp_parser.cpp
-    Vita3K/vita3k/shader/src/spirv_recompiler.cpp
-    Vita3K/vita3k/shader/src/translator/alu.cpp
-    Vita3K/vita3k/shader/src/translator/branch_cond.cpp
-    Vita3K/vita3k/shader/src/translator/data.cpp
-    Vita3K/vita3k/shader/src/translator/ialu.cpp
-    Vita3K/vita3k/shader/src/translator/illegal.cpp
-    Vita3K/vita3k/shader/src/translator/special.cpp
-    Vita3K/vita3k/shader/src/translator/texture.cpp
-    Vita3K/vita3k/shader/src/translator/utils.cpp
-    Vita3K/vita3k/shader/src/usse_decode_helpers.cpp
-    Vita3K/vita3k/shader/src/usse_disasm.cpp
-    Vita3K/vita3k/shader/src/usse_program_analyzer.cpp
-    Vita3K/vita3k/shader/src/usse_translator_entry.cpp
-    Vita3K/vita3k/shader/src/usse_utilities.cpp
 )
 
 target_include_directories(vita2hos PRIVATE
     include
-    include/vita3k
-    Vita3K/vita3k/gxm/include
-    Vita3K/vita3k/shader/include
-    Vita3K/vita3k/features/include
-    Vita3K/vita3k/util/include
-    ${NX_ROOT}/include/spirv_cross
-    ${NX_ROOT}/include/glslang
     ${NX_ROOT}/include/uam/mesa-imported
 )
 
 target_compile_options(vita2hos PRIVATE
-    -Wall
+    -Wextra
+    -Wno-unused-parameter
 )
 
 target_compile_definitions(vita2hos PRIVATE
@@ -90,18 +98,13 @@ target_compile_definitions(vita2hos PRIVATE
 )
 
 target_link_libraries(vita2hos PRIVATE
-    SPIRV
-    spirv-cross-c
+    shader
     spirv-cross-core
-    spirv-cross-cpp
-    spirv-cross-glsl
-    spirv-cross-reflect
-    spirv-cross-util
-    glslang
     fmt
     uam
     miniz
-    deko3dd
+    $<$<CONFIG:Debug>:deko3dd>
+    $<$<CONFIG:Release>:deko3d>
 )
 
 target_link_directories(vita2hos PRIVATE
@@ -110,9 +113,8 @@ target_link_directories(vita2hos PRIVATE
 
 target_link_options(vita2hos PRIVATE
     -specs=${NX_ROOT}/switch32.specs
+    -specs=sync-dmb.specs
     -Wl,-Map,${CMAKE_PROJECT_NAME}.map
-    # pthread_cancel gets removed otherwise, which makes __ghtread_active_p() fail
-    -Wl,-u,pthread_cancel
 )
 
 find_program(NX_ELF2NSO_EXE NAMES elf2nso HINTS "${DEVKITPRO}/tools/bin")
