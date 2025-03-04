@@ -1,0 +1,49 @@
+name: CI
+
+permissions:
+  id-token: write
+  contents: read
+  packages: read
+
+on:
+  push:
+    branches:
+      - "main"
+  pull_request:
+    branches:
+      - "main"
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vita2hos/devcontainer/vita2hos:master
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GHCR_PAT_VITA2HOS }}
+      options: --user root
+    strategy:
+      matrix:
+        build_type: [Debug, Release]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.build_type }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.build_type }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Build_${{ matrix.build_type }}_${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            build/${{ matrix.build_type }}/vita2hos.elf
+            build/${{ matrix.build_type }}/vita2hos.map
+            build/${{ matrix.build_type }}/vita2hos.nsp

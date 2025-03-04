@@ -10,7 +10,7 @@
             "name": "Debug",
             "hidden": false,
             "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build_debug",
+            "binaryDir": "${sourceDir}/build/Debug",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_TOOLCHAIN_FILE": "$env{DEVKITPRO}/cmake/devkitARM.cmake",
@@ -22,7 +22,7 @@
             "name": "Release",
             "hidden": false,
             "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build_release",
+            "binaryDir": "${sourceDir}/build/Release",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_TOOLCHAIN_FILE": "$env{DEVKITPRO}/cmake/devkitARM.cmake",
