@@ -1,3 +1,8 @@
 [submodule "Vita3K"]
 	path = Vita3K
 	url = https://github.com/Vita3K/Vita3K.git
+	shallow = true
+[submodule "vita-headers"]
+	path = vita-headers
+	url = https://github.com/vitasdk/vita-headers.git
+	shallow = true
