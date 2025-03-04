@@ -124,3 +124,8 @@ find_program(NX_BUILD_PFS0_EXE NAMES build_pfs0 HINTS "${DEVKITPRO}/tools/bin")
 nx_create_exefs(${CMAKE_PROJECT_NAME}
     CONFIG ${CMAKE_PROJECT_NAME}.json
 )
+
+add_custom_target(send
+	COMMAND curl -T ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}.nsp --user switch:switch ftp://${SWITCHIP}:5000/vita2hos/vita2hos.nsp
+	DEPENDS ${CMAKE_PROJECT_NAME}_nsp
+)
