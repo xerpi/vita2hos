@@ -4,11 +4,11 @@
 #include <deko3d.h>
 
 typedef struct VitaMemBlockInfo {
-	uint32_t index;
-	SceUID uid;
-	void *base;
-	uint32_t size;
-	DkMemBlock dk_memblock;
+    uint32_t index;
+    SceUID uid;
+    void *base;
+    uint32_t size;
+    DkMemBlock dk_memblock;
 } VitaMemBlockInfo;
 
 int SceSysmem_init(DkDevice dk_device);

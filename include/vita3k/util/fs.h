@@ -21,47 +21,57 @@
 
 namespace fs = std::filesystem;
 
-class Root {
+class Root
+{
     fs::path base_path;
     fs::path pref_path;
 
-public:
-    void set_base_path(const fs::path &p) {
+  public:
+    void set_base_path(const fs::path &p)
+    {
         base_path = p;
     }
 
-    fs::path get_base_path() const {
+    fs::path get_base_path() const
+    {
         return base_path;
     }
 
-    std::string get_base_path_string() const {
+    std::string get_base_path_string() const
+    {
         return base_path.string();
     }
 
-    void set_pref_path(const fs::path &p) {
+    void set_pref_path(const fs::path &p)
+    {
         pref_path = p;
     }
 
-    fs::path get_pref_path() const {
+    fs::path get_pref_path() const
+    {
         return pref_path;
     }
 
-    std::string get_pref_path_string() const {
+    std::string get_pref_path_string() const
+    {
         return pref_path.string();
     }
 }; // class root
 
-namespace fs_utils {
+namespace fs_utils
+{
 
 /**
-  * \brief  Construct a file name (optionally with an extension) to be placed in a Vita3K directory.
-  * \param  base_path   The main output path for the file.
-  * \param  folder_path The sub-directory/sub-directories to output to.
-  * \param  file_name   The name of the file.
-  * \param  extension   The extension of the file (optional)
-  * \return A complete Boost.Filesystem file path normalized.
-  */
-inline fs::path construct_file_name(const fs::path &base_path, const fs::path &folder_path, const fs::path &file_name, const fs::path &extension = "") {
+ * \brief  Construct a file name (optionally with an extension) to be placed in a Vita3K directory.
+ * \param  base_path   The main output path for the file.
+ * \param  folder_path The sub-directory/sub-directories to output to.
+ * \param  file_name   The name of the file.
+ * \param  extension   The extension of the file (optional)
+ * \return A complete Boost.Filesystem file path normalized.
+ */
+inline fs::path construct_file_name(const fs::path &base_path, const fs::path &folder_path,
+                                    const fs::path &file_name, const fs::path &extension = "")
+{
     fs::path full_file_path{ base_path / folder_path / file_name };
     if (!extension.empty())
         full_file_path.replace_extension(extension);

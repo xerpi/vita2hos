@@ -4,15 +4,15 @@
 #include <psp2/kernel/threadmgr.h>
 
 typedef struct {
-	uint32_t index;
-	Thread thread;
-	SceUID uid;
-	char name[32];
-	SceKernelThreadEntry entry;
-	SceSize arglen;
-	void *argp;
-	int return_status;
-	void **vita_tls;
+    uint32_t index;
+    Thread thread;
+    SceUID uid;
+    char name[32];
+    SceKernelThreadEntry entry;
+    SceSize arglen;
+    void *argp;
+    int return_status;
+    void **vita_tls;
 } VitaThreadInfo;
 
 int SceKernelThreadMgr_init(void);
