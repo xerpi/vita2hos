@@ -16,6 +16,7 @@
 #include "load.h"
 #include "log.h"
 #include "module.h"
+#include "netlog.h"
 
 #include "modules/SceCtrl.h"
 #include "modules/SceDisplay.h"
@@ -107,12 +108,11 @@ int main(int argc, char *argv[])
     void *entry;
     int ret;
 
-    consoleDebugInit(debugDevice_SVC);
-
+    /* Initialize the socket library */
     socketInitializeDefault();
-    inet_pton(AF_INET, "10.42.0.1", &__nxlink_host);
-    /* Port 28771 (nc -kl 28771) */
-    nxlinkStdio();
+
+    /* Initialize netlog */
+    netlog_init();
     log_to_fb_console = true;
 
     LOG("vita2hos " VITA2HOS_MAJOR "." VITA2HOS_MINOR "." VITA2HOS_PATCH "-" VITA2HOS_HASH

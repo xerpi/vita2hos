@@ -26,8 +26,8 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_TOOLCHAIN_FILE": "$env{DEVKITPRO}/cmake/devkitARM.cmake",
-                "CMAKE_EXPORT_COMPILE_COMMANDS": "YES",
-                "CMAKE_COLOR_DIAGNOSTICS": "YES"
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "CMAKE_COLOR_DIAGNOSTICS": "ON"
             }
         }
     ],

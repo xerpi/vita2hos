@@ -68,6 +68,7 @@ add_executable(vita2hos
     source/log.c
     source/main.c
     source/module.c
+    source/netlog.c
     source/uam_compiler_iface_c.cpp
     source/util.c
     source/vita3k_shader_recompiler_iface_c.cpp
@@ -126,6 +127,6 @@ nx_create_exefs(${CMAKE_PROJECT_NAME}
 )
 
 add_custom_target(send
-	COMMAND curl -T ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}.nsp --user switch:switch ftp://${SWITCHIP}:5000/vita2hos/vita2hos.nsp
-	DEPENDS ${CMAKE_PROJECT_NAME}_nsp
+    COMMAND curl -T ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}.nsp --user switch:switch ftp://$ENV{SWITCHIP}:5000/vita2hos/vita2hos.nsp
+    DEPENDS ${CMAKE_PROJECT_NAME}_nsp
 )
