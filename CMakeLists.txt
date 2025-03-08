@@ -114,7 +114,6 @@ target_link_directories(vita2hos PRIVATE
 
 target_link_options(vita2hos PRIVATE
     -specs=${NX_ROOT}/switch32.specs
-    -specs=sync-dmb.specs
     -Wl,-Map,${CMAKE_PROJECT_NAME}.map
 )
 
