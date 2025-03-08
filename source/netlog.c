@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <switch.h>
 #include <sys/iosupport.h>
@@ -7,39 +8,36 @@
 
 #include "netlog.h"
 
-static int g_socket = -1;
-static struct sockaddr_in g_dest_addr;
-
-ssize_t multicast_udp_send(const char *buffer, size_t buffer_len)
-{
-    return sendto(g_socket, buffer, buffer_len, 0, (struct sockaddr *)&g_dest_addr,
-                  sizeof(g_dest_addr));
-}
-
-static ssize_t devoptab_netlog_write(struct _reent *r, void *fd, const char *ptr, size_t len)
-{
-    return multicast_udp_send(ptr, len);
-}
-
-static const devoptab_t devoptab_netlog = {
-    .name = "netlog",
-    .write_r = devoptab_netlog_write,
-};
-
 int netlog_init(void)
 {
-    int ret, sock;
+    int ret, sock, flags;
     unsigned char ttl;
+    struct sockaddr_in dest_addr;
 
     /* Create a UDP socket */
     sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0)
         return sock;
 
+    /* Set to non-blocking */
+    flags = fcntl(sock, F_GETFL, 0);
+    if (flags == -1) {
+        close(sock);
+        return flags;
+    }
+
+    ret = fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+    if (ret != 0) {
+        close(sock);
+        return ret;
+    }
+
     /* Set up the destination address (multicast group) */
-    g_dest_addr = (struct sockaddr_in){ .sin_family = AF_INET,
-                                        .sin_port = htons(PORT),
-                                        .sin_addr.s_addr = inet_addr(MULTICAST_ADDR) };
+    dest_addr = (struct sockaddr_in){
+        .sin_family = AF_INET,
+        .sin_port = htons(PORT),
+        .sin_addr.s_addr = inet_addr(MULTICAST_ADDR),
+    };
 
     /* Optional: Set TTL (Time To Live) for multicast packets */
     ttl = 1; /* Restrict to local network */
@@ -49,12 +47,23 @@ int netlog_init(void)
         return ret;
     }
 
-    g_socket = sock;
+    /* Connect the socket to the multicast group */
+    ret = connect(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+    if (ret < 0) {
+        close(sock);
+        return ret;
+    }
 
-    devoptab_list[STD_OUT] = &devoptab_netlog;
-    devoptab_list[STD_ERR] = &devoptab_netlog;
-    setvbuf(stdout, NULL, _IONBF, 0);
-    setvbuf(stderr, NULL, _IONBF, 0);
+    /* Redirect stdout */
+    fflush(stdout);
+    dup2(sock, STDOUT_FILENO);
+
+    /* Redirect stderr */
+    fflush(stderr);
+    dup2(sock, STDERR_FILENO);
+
+    /* Close the original socket descriptor */
+    close(sock);
 
     return 0;
 }
