@@ -10,15 +10,41 @@
 
 #include "../log.h"
 
-#define LOG_TRACE(...) LOGSTR(fmt::format(__VA_ARGS__).c_str())
-template <typename... Args> auto LOG_DEBUG(std::string_view fmt, Args &&...args)
+#undef LOG_TRACE
+template <typename... Args> void LOG_TRACE(std::string_view fmt, Args &&...args)
 {
-    return fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...);
+    log_print(fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str());
 }
-#define LOG_INFO(...)     LOGSTR(fmt::format(__VA_ARGS__).c_str())
-#define LOG_WARN(...)     LOGSTR(fmt::format(__VA_ARGS__).c_str())
-#define LOG_ERROR(...)    LOGSTR(fmt::format(__VA_ARGS__).c_str())
-#define LOG_CRITICAL(...) LOGSTR(fmt::format(__VA_ARGS__).c_str())
+
+#undef LOG_DEBUG
+template <typename... Args> void LOG_DEBUG(std::string_view fmt, Args &&...args)
+{
+    log_print(fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str());
+}
+
+#undef LOG_INFO
+template <typename... Args> void LOG_INFO(std::string_view fmt, Args &&...args)
+{
+    log_print(fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str());
+}
+
+#undef LOG_WARN
+template <typename... Args> void LOG_WARN(std::string_view fmt, Args &&...args)
+{
+    log_print(fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str());
+}
+
+#undef LOG_ERROR
+template <typename... Args> void LOG_ERROR(std::string_view fmt, Args &&...args)
+{
+    log_print(fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str());
+}
+
+#undef LOG_CRITICAL
+template <typename... Args> void LOG_CRITICAL(std::string_view fmt, Args &&...args)
+{
+    log_print(fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str());
+}
 
 template <typename T> std::string log_hex(T val)
 {

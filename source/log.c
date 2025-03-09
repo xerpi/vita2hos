@@ -2,14 +2,15 @@
 #include <stdbool.h>
 #include <switch.h>
 
+#include "log.h"
+#include "netlog.h"
 #include "util.h"
 
-bool log_to_fb_console;
+static uint32_t g_device_mask;
 
-#ifdef VITA2HOS_LOG_TO_FILE
-const char log_file_path[] = "sdmc:/vita2hos/debug.log";
+const char log_file_path[] = "sdmc:/vita2hos/log.txt";
 
-void flog(const char *str)
+void file_log(const char *str)
 {
     FILE *fp;
 
@@ -22,36 +23,38 @@ void flog(const char *str)
 
     fclose(fp);
 }
-#endif
 
-void LOGSTR(const char *str)
+void log_init(uint32_t device_mask)
 {
-    svcOutputDebugString(str, strlen(str));
-
-    if (log_to_fb_console)
-        puts(str);
-
-#ifdef VITA2HOS_LOG_TO_FILE
-    flog(str);
-#endif
+    g_device_mask = device_mask;
 }
 
-void __attribute__((format(printf, 1, 2))) LOG(const char *fmt, ...)
+void log_print(const char *str)
 {
-    char buf[256];
-    va_list argptr;
-    int n;
+    const size_t len = strlen(str);
 
-    va_start(argptr, fmt);
-    n = vsnprintf(buf, sizeof(buf), fmt, argptr);
+    if (g_device_mask & LOG_DEVICE_SVC) {
+        svcOutputDebugString(str, len);
+        svcOutputDebugString("\n", 1);
+    }
+
+    if (g_device_mask & LOG_DEVICE_NETLOG) {
+        netlog_write(str, len);
+        netlog_write("\n", 1);
+    }
+
+    if (g_device_mask & LOG_DEVICE_FILE)
+        file_log(str);
+}
+
+void log_printf(const char *restrict format, ...)
+{
+    static char buf[2048];
+    va_list argptr;
+
+    va_start(argptr, format);
+    vsnprintf(buf, sizeof(buf), format, argptr);
     va_end(argptr);
 
-    svcOutputDebugString(buf, n);
-
-    if (log_to_fb_console)
-        puts(buf);
-
-#ifdef VITA2HOS_LOG_TO_FILE
-    flog(buf);
-#endif
+    log_print(buf);
 }

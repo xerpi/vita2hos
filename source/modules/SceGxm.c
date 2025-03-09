@@ -352,7 +352,7 @@ static inline uint32_t gxm_parameter_type_size(SceGxmParameterType type)
     }
 }
 
-static inline int gxm_texture_get_type(const SceGxmTextureInner *texture)
+static inline uint32_t gxm_texture_get_type(const SceGxmTextureInner *texture)
 {
     return texture->type << 29;
 }

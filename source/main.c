@@ -113,7 +113,8 @@ int main(int argc, char *argv[])
 
     /* Initialize netlog */
     netlog_init();
-    log_to_fb_console = true;
+
+    log_init(LOG_DEVICE_SVC | LOG_DEVICE_NETLOG);
 
     LOG("vita2hos " VITA2HOS_MAJOR "." VITA2HOS_MINOR "." VITA2HOS_PATCH "-" VITA2HOS_HASH
         " (" __DATE__ " " __TIME__ ")");

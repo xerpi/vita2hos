@@ -2,6 +2,7 @@ BasedOnStyle: LLVM
 IndentWidth: 4
 UseTab: Never
 BreakBeforeBraces: Linux
+AlignConsecutiveAssignments: true
 AllowShortEnumsOnASingleLine: false
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortFunctionsOnASingleLine: false

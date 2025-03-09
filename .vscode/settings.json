@@ -1,8 +1,0 @@
-{
-    "editor.formatOnSave": true,
-    "editor.formatOnSaveMode": "file",
-    "files.associations": {
-        "cstdlib": "c",
-        "netlog.h": "c"
-    }
-}

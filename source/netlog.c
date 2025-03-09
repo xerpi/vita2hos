@@ -8,6 +8,8 @@
 
 #include "netlog.h"
 
+static int g_sock = -1;
+
 int netlog_init(void)
 {
     int ret, sock, flags;
@@ -34,8 +36,8 @@ int netlog_init(void)
 
     /* Set up the destination address (multicast group) */
     dest_addr = (struct sockaddr_in){
-        .sin_family = AF_INET,
-        .sin_port = htons(PORT),
+        .sin_family      = AF_INET,
+        .sin_port        = htons(PORT),
         .sin_addr.s_addr = inet_addr(MULTICAST_ADDR),
     };
 
@@ -54,16 +56,22 @@ int netlog_init(void)
         return ret;
     }
 
-    /* Redirect stdout */
-    fflush(stdout);
-    dup2(sock, STDOUT_FILENO);
-
-    /* Redirect stderr */
-    fflush(stderr);
-    dup2(sock, STDERR_FILENO);
-
-    /* Close the original socket descriptor */
-    close(sock);
+    g_sock = sock;
 
     return 0;
+}
+
+int netlog_deinit(void)
+{
+    if (g_sock >= 0) {
+        close(g_sock);
+        g_sock = -1;
+    }
+
+    return 0;
+}
+
+ssize_t netlog_write(const void *buf, size_t size)
+{
+    return write(g_sock, buf, size);
 }

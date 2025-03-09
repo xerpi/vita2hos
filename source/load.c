@@ -532,7 +532,7 @@ static int resolve_imports(uintptr_t rx_base, uintptr_t rw_base, sce_module_impo
 
     for (uint32_t i = 0; i < IMP_GET_VARS_COUNT(import); i++) {
         nid = ((uint32_t *)CODE_RX_TO_RW_ADDR(rx_base, rw_base, IMP_GET_VARS_TABLE(import)))[i];
-        IF_VERBOSE LOG("  Trying to resolve variable NID 0x%08" PRIx32, nid);
+        LOG("  Trying to resolve variable NID 0x%08" PRIx32, nid);
         /* TODO */
         LOG("    Variable NID resolving currently not implemented!");
     }
@@ -566,7 +566,7 @@ static int relocate(const void *reloc, uint32_t size, segment_info_t *segs)
             r_offset = SCE_REL_LONG_OFFSET(entry->r_long);
             r_addend = SCE_REL_LONG_ADDEND(entry->r_long);
             if (SCE_REL_LONG_CODE2(entry->r_long))
-                IF_VERBOSE LOG("Code2 ignored for relocation at 0x%" PRIx32, pos);
+                LOG("Code2 ignored for relocation at 0x%" PRIx32, pos);
             pos += 12;
         }
 

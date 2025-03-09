@@ -66,3 +66,6 @@ build_release/
 
 # CMake
 !CMakeLists.txt
+
+# VSCode
+.vscode/

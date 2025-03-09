@@ -8,5 +8,7 @@
 #define PORT           28771
 
 int netlog_init(void);
+int netlog_deinit(void);
+ssize_t netlog_write(const void *buf, size_t size);
 
 #endif
