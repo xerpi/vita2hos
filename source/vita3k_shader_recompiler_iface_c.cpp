@@ -18,10 +18,10 @@ convert_gxp_internal(const SceGxmProgram *program, const char *shader_name,
     shader::Hints hints;
     FeatureState features;
     features.support_shader_interlock = support_shader_interlock;
-    features.support_texture_barrier = support_texture_barrier;
-    features.direct_fragcolor = direct_fragcolor;
-    features.spirv_shader = spirv_shader;
-    features.use_mask_bit = false;
+    features.support_texture_barrier  = support_texture_barrier;
+    features.direct_fragcolor         = direct_fragcolor;
+    features.spirv_shader             = spirv_shader;
+    features.use_mask_bit             = false;
 
     std::vector<SceGxmVertexAttribute> hint_attribs;
     for (uint32_t i = 0; i < num_hint_attributes; i++)
@@ -55,13 +55,13 @@ bool convert_gxp_to_spirv_c(uint32_t **spirv, uint32_t *num_instr, const SceGxmP
 {
     shader::GeneratedShader shader;
 
-    shader = convert_gxp_internal(program, shader_name, support_shader_interlock,
-                                  support_texture_barrier, direct_fragcolor, spirv_shader,
-                                  hint_attributes, num_hint_attributes, maskupdate,
-                                  force_shader_debug, dumper, shader::Target::SpirVOpenGL);
+    shader     = convert_gxp_internal(program, shader_name, support_shader_interlock,
+                                      support_texture_barrier, direct_fragcolor, spirv_shader,
+                                      hint_attributes, num_hint_attributes, maskupdate,
+                                      force_shader_debug, dumper, shader::Target::SpirVOpenGL);
 
     *num_instr = shader.spirv.size();
-    *spirv = (uint32_t *)malloc(sizeof(uint32_t) * shader.spirv.size());
+    *spirv     = (uint32_t *)malloc(sizeof(uint32_t) * shader.spirv.size());
     memcpy(*spirv, shader.spirv.data(), sizeof(uint32_t) * shader.spirv.size());
 
     return true;
@@ -81,7 +81,7 @@ bool convert_gxp_to_glsl_c(char **glsl, const SceGxmProgram *program, const char
                                   hint_attributes, num_hint_attributes, maskupdate,
                                   force_shader_debug, dumper, shader::Target::GLSLOpenGL);
 
-    *glsl = (char *)malloc(shader.glsl.size() + 1);
+    *glsl  = (char *)malloc(shader.glsl.size() + 1);
     strcpy(*glsl, shader.glsl.c_str());
 
     return true;

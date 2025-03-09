@@ -22,12 +22,12 @@ extern const library_t __stop_exported_libraries[];
     extern const void *__stop_##_name##_func_table[];                                              \
     static const library_t _name##_library                                                         \
         __attribute__((used, section("exported_libraries"))) = {                                   \
-            .name = #_name,                                                                        \
-            .nid = _nid,                                                                           \
+            .name                = #_name,                                                         \
+            .nid                 = _nid,                                                           \
             .func_nidtable_start = __start_##_name##_func_nidtable,                                \
-            .func_nidtable_stop = __stop_##_name##_func_nidtable,                                  \
-            .func_table_start = __start_##_name##_func_table,                                      \
-            .func_table_stop = __stop_##_name##_func_table                                         \
+            .func_nidtable_stop  = __stop_##_name##_func_nidtable,                                 \
+            .func_table_start    = __start_##_name##_func_table,                                   \
+            .func_table_stop     = __stop_##_name##_func_table                                     \
         }
 
 #define EXPORT(library, nid, type, name, ...)                                                      \

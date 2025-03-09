@@ -721,7 +721,7 @@ static int translate_shader(DkShader *shader, const SceGxmProgram *program, pipe
     uint32_t num_instr;
 
     ret = convert_gxp_to_spirv_c(&spirv, &num_instr, program, prefix, false, false, false, false,
-                                 attributes, attributeCount, false, true, SHADER_DUMP_CB);
+                                 attributes, attributeCount, false, false, SHADER_DUMP_CB);
     if (ret) {
         dump_shader_spirv(prefix, spirv, num_instr);
         free(spirv);
@@ -730,7 +730,7 @@ static int translate_shader(DkShader *shader, const SceGxmProgram *program, pipe
 
     LOG("Converting shader (%s) to GLSL...", prefix);
     ret = convert_gxp_to_glsl_c(&glsl, program, prefix, false, false, false, false, attributes,
-                                attributeCount, false, true, SHADER_DUMP_CB);
+                                attributeCount, false, false, SHADER_DUMP_CB);
     LOG("  ret: %d", ret);
 #if DUMP_SHADER_GLSL
     if (ret)

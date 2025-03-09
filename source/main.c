@@ -49,8 +49,8 @@ static int launch(SceKernelThreadEntry entry)
     /* Initialize deko3d device */
     dkDeviceMakerDefaults(&device_maker);
     device_maker.userData = NULL;
-    device_maker.cbDebug = dk_debug_callback;
-    dk_device = dkDeviceCreate(&device_maker);
+    device_maker.cbDebug  = dk_debug_callback;
+    dk_device             = dkDeviceCreate(&device_maker);
 
     /* Init modules */
     ret = SceSysmem_init(dk_device);
