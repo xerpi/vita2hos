@@ -6,6 +6,7 @@
 #include "netlog.h"
 #include "util.h"
 
+static Mutex g_log_mutex;
 static uint32_t g_device_mask;
 
 const char log_file_path[] = "sdmc:/vita2hos/log.txt";
@@ -26,12 +27,15 @@ void file_log(const char *str)
 
 void log_init(uint32_t device_mask)
 {
+    mutexInit(&g_log_mutex);
     g_device_mask = device_mask;
 }
 
 void log_print(const char *str)
 {
     const size_t len = strlen(str);
+
+    mutexLock(&g_log_mutex);
 
     if (g_device_mask & LOG_DEVICE_SVC) {
         svcOutputDebugString(str, len);
@@ -45,11 +49,13 @@ void log_print(const char *str)
 
     if (g_device_mask & LOG_DEVICE_FILE)
         file_log(str);
+
+    mutexUnlock(&g_log_mutex);
 }
 
 void log_printf(const char *restrict format, ...)
 {
-    static char buf[2048];
+    char buf[512];
     va_list argptr;
 
     va_start(argptr, format);
