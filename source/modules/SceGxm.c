@@ -149,7 +149,8 @@ typedef struct SceGxmContext {
         /* Dirty state tracking */
         union {
             struct {
-                uint32_t shaders : 1;
+                uint32_t vertex_shader : 1;
+                uint32_t fragment_shader : 1;
                 uint32_t depth_stencil : 1;
                 uint32_t front_stencil : 1;
                 uint32_t back_stencil : 1;
@@ -1351,8 +1352,8 @@ EXPORT(SceGxm, 0x31FF8ABD, void, sceGxmSetVertexProgram, SceGxmContext *context,
     dkCmdBufBindVtxAttribState(context->cmdbuf, vertex_attrib_state, vertexProgram->attributeCount);
     dkCmdBufBindVtxBufferState(context->cmdbuf, vertex_buffer_state, vertexProgram->streamCount);
 
-    context->state.vertex_program    = vertexProgram;
-    context->state.dirty.bit.shaders = true;
+    context->state.vertex_program          = vertexProgram;
+    context->state.dirty.bit.vertex_shader = true;
 }
 
 EXPORT(SceGxm, 0xAD2F48D9, void, sceGxmSetFragmentProgram, SceGxmContext *context,
@@ -1366,10 +1367,10 @@ EXPORT(SceGxm, 0xAD2F48D9, void, sceGxmSetFragmentProgram, SceGxmContext *contex
            DkColorMask_A * !!(fragmentProgram->blendInfo.colorMask & SCE_GXM_COLOR_MASK_A);
 
     dkColorWriteStateSetMask(&context->state.color_write, 0, mask);
-    context->state.dirty.bit.color_write = true;
+    context->state.dirty.bit.color_write     = true;
 
-    context->state.fragment_program      = fragmentProgram;
-    context->state.dirty.bit.shaders     = true;
+    context->state.fragment_program          = fragmentProgram;
+    context->state.dirty.bit.fragment_shader = true;
 }
 
 EXPORT(SceGxm, 0x29C34DF5, int, sceGxmSetFragmentTexture, SceGxmContext *context,
@@ -1915,50 +1916,44 @@ static void context_flush_dirty_state(SceGxmContext *context)
     const SceGxmVertexProgram *vertex_program     = context->state.vertex_program;
     const SceGxmFragmentProgram *fragment_program = context->state.fragment_program;
 
-    if (context->state.dirty.bit.shaders) {
+    if (context->state.dirty.bit.vertex_shader && context->state.dirty.bit.fragment_shader) {
         shaders[0] = &vertex_program->dk_shader;
         shaders[1] = &fragment_program->dk_shader;
-        dkCmdBufBindShaders(context->cmdbuf, DkStageFlag_GraphicsMask, shaders,
-                            ARRAY_SIZE(shaders));
-        context->state.dirty.bit.shaders = false;
+        dkCmdBufBindShaders(context->cmdbuf, DkStageFlag_Vertex | DkStageFlag_Fragment, shaders, 2);
+    } else if (context->state.dirty.bit.vertex_shader) {
+        shaders[0] = &vertex_program->dk_shader;
+        dkCmdBufBindShaders(context->cmdbuf, DkStageFlag_Vertex, shaders, 1);
+    } else if (context->state.dirty.bit.fragment_shader) {
+        shaders[0] = &fragment_program->dk_shader;
+        dkCmdBufBindShaders(context->cmdbuf, DkStageFlag_Fragment, shaders, 1);
     }
 
-    if (context->state.dirty.bit.depth_stencil) {
+    if (context->state.dirty.bit.depth_stencil)
         dkCmdBufBindDepthStencilState(context->cmdbuf, &context->state.depth_stencil);
-        context->state.dirty.bit.depth_stencil = false;
-    }
 
     if (context->state.dirty.bit.front_stencil) {
         dkCmdBufSetStencil(context->cmdbuf, DkFace_Front, context->state.front_stencil.write_mask,
                            context->state.front_stencil.ref,
                            context->state.front_stencil.compare_mask);
-        context->state.dirty.bit.front_stencil = false;
     }
 
     if (context->state.dirty.bit.back_stencil) {
         dkCmdBufSetStencil(context->cmdbuf, DkFace_Back, context->state.back_stencil.write_mask,
                            context->state.back_stencil.ref,
                            context->state.back_stencil.compare_mask);
-        context->state.dirty.bit.back_stencil = false;
     }
 
-    if (context->state.dirty.bit.color_write) {
+    if (context->state.dirty.bit.color_write)
         dkCmdBufBindColorWriteState(context->cmdbuf, &context->state.color_write);
-        context->state.dirty.bit.color_write = false;
-    }
 
-    if (context->state.dirty.bit.fragment_textures) {
+    if (context->state.dirty.bit.fragment_textures)
         upload_fragment_texture_descriptors(context);
-        context->state.dirty.bit.fragment_textures = false;
-    }
 
     if (context->state.dirty.bit.vertex_default_uniform) {
         dkCmdBufBindStorageBuffer(
             context->cmdbuf, DkStage_Vertex, 0, context->state.vertex_default_uniform.gpu_addr,
             vertex_program->programId->programHeader->default_uniform_buffer_count * sizeof(float));
-
         context->state.vertex_default_uniform.allocated = false;
-        context->state.dirty.bit.vertex_default_uniform = false;
     }
 
     if (context->state.dirty.bit.fragment_default_uniform) {
@@ -1966,10 +1961,11 @@ static void context_flush_dirty_state(SceGxmContext *context)
             context->cmdbuf, DkStage_Fragment, 1, context->state.fragment_default_uniform.gpu_addr,
             fragment_program->programId->programHeader->default_uniform_buffer_count *
                 sizeof(float));
-
         context->state.fragment_default_uniform.allocated = false;
-        context->state.dirty.bit.fragment_default_uniform = false;
     }
+
+    /* We have flushed all the dirty state */
+    context->state.dirty.raw = 0;
 }
 
 EXPORT(SceGxm, 0xBC059AFC, int, sceGxmDraw, SceGxmContext *context, SceGxmPrimitiveType primType,
