@@ -119,6 +119,7 @@ typedef struct SceGxmContext {
         } vertex_rb, fragment_rb;
         const SceGxmVertexProgram *vertex_program;
         const SceGxmFragmentProgram *fragment_program;
+        SceGxmSyncObject *fragment_sync_object;
         bool in_scene;
         bool two_sided_mode;
         bool discard_stencil;
@@ -1194,9 +1195,9 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
         depthStencil && !(depthStencil->zlsControl & SCE_GXM_DEPTH_STENCIL_FORCE_STORE_ENABLED);
 
     /* Mark all state as dirty to make sure we bind everything before the first draw call */
-    context->state.dirty.raw = ~(uint32_t)0;
-
-    context->state.in_scene  = true;
+    context->state.dirty.raw            = ~(uint32_t)0;
+    context->state.fragment_sync_object = fragmentSyncObject;
+    context->state.in_scene             = true;
 
     return 0;
 }
@@ -1240,8 +1241,12 @@ EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context,
         dkCmdBufDiscardDepthStencil(context->cmdbuf);
     }
 
+    /* Signal fence when rendering finishes */
+    dkQueueSignalFence(g_render_queue, &context->state.fragment_sync_object->fence, true);
+
     cmd_list = dkCmdBufFinishList(context->cmdbuf);
     dkQueueSubmitCommands(g_render_queue, cmd_list);
+    dkQueueFlush(g_render_queue);
 
     context->state.in_scene = false;
 
@@ -1291,10 +1296,6 @@ EXPORT(SceGxm, 0xEC5C26B5, int, sceGxmDisplayQueueAddEntry, SceGxmSyncObject *ol
     DisplayQueueControlBlock *queue = g_display_queue;
 
     LOG("sceGxmDisplayQueueAddEntry: old: %p, new: %p", oldBuffer, newBuffer);
-
-    /* Signal back buffer fence when rendering finishes */
-    dkQueueSignalFence(g_render_queue, &newBuffer->fence, true);
-    dkQueueFlush(g_render_queue);
 
     /* Throttle down if we already have enough pending display queue entries */
     while (CIRC_CNT(queue->head, queue->tail, queue->num_entries) ==
