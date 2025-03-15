@@ -1899,6 +1899,8 @@ static void context_flush_dirty_state(SceGxmContext *context)
     uint32_t i;
 
     if (context->state.dirty.bit.vertex_shader) {
+        memset(vertex_attrib_state, 0,
+               vertex_program->attributeCount * sizeof(*vertex_attrib_state));
         for (i = 0; i < vertex_program->attributeCount; i++) {
             vertex_attrib_state[i].bufferId = attributes[i].streamIndex;
             vertex_attrib_state[i].isFixed  = 0;
