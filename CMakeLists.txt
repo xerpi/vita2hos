@@ -24,7 +24,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(VITA_HEADERS ${CMAKE_SOURCE_DIR}/vita-headers)
+set(VITA_HEADERS ${CMAKE_SOURCE_DIR}/external/vita-headers)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${NX_ARCH_SETTINGS} ${NX_COMMON_FLAGS} -idirafter ${VITA_HEADERS}/include")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${NX_ARCH_SETTINGS} ${NX_COMMON_FLAGS} -idirafter ${VITA_HEADERS}/include")
 
@@ -37,31 +37,7 @@ add_compile_options(
     -ffunction-sections
 )
 
-# Shim libraries for Vita3K
-add_library(vita3k_shim INTERFACE)
-target_include_directories(vita3k_shim INTERFACE include/vita3k)
-
-add_library(util INTERFACE)
-target_link_libraries(util INTERFACE vita3k_shim)
-target_include_directories(util INTERFACE Vita3K/vita3k/util/include)
-
-add_library(features INTERFACE)
-target_link_libraries(features INTERFACE vita3k_shim)
-target_include_directories(features INTERFACE Vita3K/vita3k/features/include)
-
-# Vita3K gxm
-add_subdirectory(Vita3K/vita3k/gxm)
-target_link_libraries(gxm INTERFACE vita3k_shim)
-target_include_directories(gxm PRIVATE
-    include/vita3k
-)
-
-# Vita3K shader
-add_subdirectory(Vita3K/vita3k/shader)
-target_include_directories(shader PRIVATE
-    ${NX_ROOT}/include/spirv_cross
-    ${NX_ROOT}/include/glslang
-)
+add_subdirectory(external)
 
 add_executable(vita2hos
     source/load.c
