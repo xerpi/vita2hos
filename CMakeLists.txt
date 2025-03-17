@@ -80,6 +80,7 @@ target_link_libraries(vita2hos PRIVATE
     fmt
     uam
     miniz
+    mlib
     $<$<CONFIG:Debug>:deko3dd>
     $<$<CONFIG:Release>:deko3d>
 )

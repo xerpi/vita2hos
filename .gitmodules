@@ -6,3 +6,7 @@
 	path = external/vita-headers
 	url = https://github.com/vitasdk/vita-headers.git
 	shallow = true
+[submodule "external/mlib"]
+	path = external/mlib
+	url = https://github.com/P-p-H-d/mlib.git
+	shallow = true

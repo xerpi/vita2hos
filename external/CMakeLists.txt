@@ -23,3 +23,7 @@ target_include_directories(shader PRIVATE
     ${NX_ROOT}/include/spirv_cross
     ${NX_ROOT}/include/glslang
 )
+
+# M*LIB
+add_library(mlib INTERFACE)
+target_include_directories(mlib INTERFACE mlib)
