@@ -155,8 +155,8 @@ EXPORT(SceLibKernel, 0x6C60AC61, SceUID, sceIoOpen, const char *file, int flags,
         return SCE_ERROR_ERRNO_EMFILE;
     }
 
-    vfile->uid = SceSysmem_get_next_uid();
-    vfile->fp = fp;
+    vfile->uid  = SceSysmem_get_next_uid();
+    vfile->fp   = fp;
     vfile->file = strdup(file);
 
     return vfile->uid;
@@ -236,8 +236,8 @@ EXPORT(SceLibKernel, 0xA9283DD0, SceUID, sceIoDopen, const char *dirname)
         return SCE_ERROR_ERRNO_EMFILE;
     }
 
-    vdir->uid = SceSysmem_get_next_uid();
-    vdir->dir = dir;
+    vdir->uid  = SceSysmem_get_next_uid();
+    vdir->dir  = dir;
     vdir->path = strdup(dirname);
 
     return vdir->uid;
@@ -263,12 +263,12 @@ EXPORT(SceIofilemgr, 0x422A221A, int, sceIoDclose, SceUID fd)
 
 static inline void tm_to_sce_datetime(SceDateTime *dt, const struct tm *tm)
 {
-    dt->year = tm->tm_year;
-    dt->month = tm->tm_mon;
-    dt->day = tm->tm_mday;
-    dt->hour = tm->tm_hour;
-    dt->minute = tm->tm_min;
-    dt->second = tm->tm_sec;
+    dt->year        = tm->tm_year;
+    dt->month       = tm->tm_mon;
+    dt->day         = tm->tm_mday;
+    dt->hour        = tm->tm_hour;
+    dt->minute      = tm->tm_min;
+    dt->second      = tm->tm_sec;
     dt->microsecond = 0;
 }
 
@@ -320,32 +320,10 @@ EXPORT(SceLibKernel, 0x9C8B6624, int, sceIoDread, SceUID fd, SceIoDirent *dirent
     return 1;
 }
 
-EXPORT(SceLibKernel, 0x632980D7, void *, sceClibMemset, void *dst, int ch, SceSize len)
-{
-    return memset(dst, ch, len);
-}
-
-EXPORT(SceLibKernel, 0x14E9DBD7, void *, sceClibMemcpy, void *dst, const void *src, SceSize len)
-{
-    return memcpy(dst, src, len);
-}
-
-EXPORT(SceLibKernel, 0x736753C8, void *, sceClibMemmove, void *dst, const void *src, SceSize len)
-{
-    return memmove(dst, src, len);
-}
-
-EXPORT(SceLibKernel, 0xFA26BC62, int, sceClibPrintf, const char *fmt, ...)
-{
-    va_list args;
-    int ret;
-
-    va_start(args, fmt);
-    ret = vprintf(fmt, args);
-    va_end(args);
-
-    return ret;
-}
+EXPORT_FUNC(SceLibKernel, 0x632980D7, memset)
+EXPORT_FUNC(SceLibKernel, 0x14E9DBD7, memcpy)
+EXPORT_FUNC(SceLibKernel, 0x736753C8, memmove)
+EXPORT_FUNC(SceLibKernel, 0xFA26BC62, printf)
 
 EXPORT(SceLibKernel, 0x0FB972F9, int, sceKernelGetThreadId)
 {
