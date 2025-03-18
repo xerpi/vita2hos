@@ -1,4 +1,5 @@
 #include <deko3d.h>
+#include <m-dict.h>
 #include <psp2/kernel/error.h>
 #include <psp2/kernel/sysmem.h>
 #include <stdatomic.h>
@@ -9,34 +10,37 @@
 #include "dk_helpers.h"
 #include "log.h"
 #include "module.h"
-#include "protected_bitset.h"
 #include "util.h"
-
-#define MAX_MEMBLOCKS 256
 
 static _Atomic SceUID g_last_uid = 1;
 static DkDevice g_dk_device;
 
-DECL_PROTECTED_BITSET(VitaMemBlockInfo, vita_memblock_infos, MAX_MEMBLOCKS)
-DECL_PROTECTED_BITSET_ALLOC(memblock_info_alloc, vita_memblock_infos, VitaMemBlockInfo)
-DECL_PROTECTED_BITSET_RELEASE(memblock_info_release, vita_memblock_infos, VitaMemBlockInfo)
-DECL_PROTECTED_BITSET_GET_FOR_UID(get_memblock_info_for_uid, vita_memblock_infos, VitaMemBlockInfo)
-DECL_PROTECTED_BITSET_GET_CMP(get_memblock_info_for_addr, vita_memblock_infos, VitaMemBlockInfo,
-                              const void *, base,
-                              base >= g_vita_memblock_infos[index].base &&
-                                  base < (g_vita_memblock_infos[index].base +
-                                          g_vita_memblock_infos[index].size))
+DICT_DEF2(vita_memblock_info_dict, SceUID, M_DEFAULT_OPLIST, VitaMemBlockInfo *, M_POD_OPLIST)
+static vita_memblock_info_dict_t g_vita_memblock_infos;
+static RwLock g_vita_memblock_infos_lock;
+
+static VitaMemBlockInfo *get_memblock_info_for_uid(SceUID uid)
+{
+    VitaMemBlockInfo *block;
+
+    rwlockReadLock(&g_vita_memblock_infos_lock);
+    block = *vita_memblock_info_dict_get(g_vita_memblock_infos, uid);
+    rwlockReadUnlock(&g_vita_memblock_infos_lock);
+
+    return block;
+}
 
 EXPORT(SceSysmem, 0xB9D5EBDE, SceUID, sceKernelAllocMemBlock, const char *name,
        SceKernelMemBlockType type, SceSize size, SceKernelAllocMemBlockOpt *opt)
 {
     VitaMemBlockInfo *block;
     uint32_t alignment;
+    void *base;
     uint32_t memblock_flags;
 
     LOG("sceKernelAllocMemBlock: name: %s, size: 0x%x", name, size);
 
-    block = memblock_info_alloc();
+    block = malloc(sizeof(*block));
     if (!block)
         return SCE_KERNEL_ERROR_NO_MEMORY;
 
@@ -45,8 +49,15 @@ EXPORT(SceSysmem, 0xB9D5EBDE, SceUID, sceKernelAllocMemBlock, const char *name,
     else
         alignment = 4 * 1024;
 
+    base = aligned_alloc(alignment, size);
+    if (!base) {
+        free(block);
+        return SCE_KERNEL_ERROR_NO_MEMORY;
+    }
+
+    memset(block, 0, sizeof(*block));
     block->uid  = SceSysmem_get_next_uid();
-    block->base = aligned_alloc(alignment, size);
+    block->base = base;
     block->size = size;
 
     switch (type) {
@@ -66,18 +77,25 @@ EXPORT(SceSysmem, 0xB9D5EBDE, SceUID, sceKernelAllocMemBlock, const char *name,
     block->dk_memblock = dk_map_memblock(g_dk_device, block->base, block->size,
                                          memblock_flags | DkMemBlockFlags_Image);
 
+    rwlockWriteLock(&g_vita_memblock_infos_lock);
+    vita_memblock_info_dict_set_at(g_vita_memblock_infos, block->uid, block);
+    rwlockWriteUnlock(&g_vita_memblock_infos_lock);
+
     return block->uid;
 }
 
 EXPORT(SceSysmem, 0xA91E15EE, int, sceKernelFreeMemBlock, SceUID uid)
 {
     VitaMemBlockInfo *block = get_memblock_info_for_uid(uid);
+
     if (!block)
         return SCE_KERNEL_ERROR_INVALID_UID;
 
     dkMemBlockDestroy(block->dk_memblock);
     free(block->base);
-    memblock_info_release(block);
+    rwlockWriteLock(&g_vita_memblock_infos_lock);
+    vita_memblock_info_dict_erase(g_vita_memblock_infos, uid);
+    rwlockWriteUnlock(&g_vita_memblock_infos_lock);
 
     return 0;
 }
@@ -85,8 +103,12 @@ EXPORT(SceSysmem, 0xA91E15EE, int, sceKernelFreeMemBlock, SceUID uid)
 EXPORT(SceSysmem, 0xB8EF5818, int, sceKernelGetMemBlockBase, SceUID uid, void **base)
 {
     VitaMemBlockInfo *block = get_memblock_info_for_uid(uid);
+
     if (!block)
         return SCE_KERNEL_ERROR_INVALID_UID;
+
+    if (!base)
+        return SCE_KERNEL_ERROR_ILLEGAL_ADDR;
 
     *base = block->base;
 
@@ -98,6 +120,9 @@ DECLARE_LIBRARY(SceSysmem, 0x37fe725a);
 int SceSysmem_init(DkDevice dk_device)
 {
     g_dk_device = dk_device;
+    vita_memblock_info_dict_init(g_vita_memblock_infos);
+    rwlockInit(&g_vita_memblock_infos_lock);
+
     return 0;
 }
 
@@ -108,12 +133,27 @@ SceUID SceSysmem_get_next_uid(void)
 
 VitaMemBlockInfo *SceSysmem_get_vita_memblock_info_for_addr(const void *addr)
 {
-    return get_memblock_info_for_addr(addr);
+    VitaMemBlockInfo *block = NULL;
+    vita_memblock_info_dict_it_t it;
+    struct vita_memblock_info_dict_pair_s *pair;
+
+    rwlockReadLock(&g_vita_memblock_infos_lock);
+    for (vita_memblock_info_dict_it(it, g_vita_memblock_infos); !vita_memblock_info_dict_end_p(it);
+         vita_memblock_info_dict_next(it)) {
+        pair = vita_memblock_info_dict_ref(it);
+        if (addr >= pair->value->base && addr < (pair->value->base + pair->value->size)) {
+            block = pair->value;
+            break;
+        }
+    }
+    rwlockReadUnlock(&g_vita_memblock_infos_lock);
+
+    return block;
 }
 
 DkMemBlock SceSysmem_get_dk_memblock_for_addr(const void *addr)
 {
-    VitaMemBlockInfo *info = get_memblock_info_for_addr(addr);
+    VitaMemBlockInfo *info = SceSysmem_get_vita_memblock_info_for_addr(addr);
     if (!info)
         return NULL;
     return info->dk_memblock;
