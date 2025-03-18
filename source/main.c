@@ -50,6 +50,7 @@ static int launch(SceKernelThreadEntry entry)
     dkDeviceMakerDefaults(&device_maker);
     device_maker.userData = NULL;
     device_maker.cbDebug = dk_debug_callback;
+    device_maker.flags = DkDeviceFlags_YAxisPointsDown;
     dk_device = dkDeviceCreate(&device_maker);
 
     /* Init modules */
