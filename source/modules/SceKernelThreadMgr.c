@@ -1,14 +1,14 @@
+#include <m-dict.h>
 #include <psp2/kernel/error.h>
 #include <psp2/kernel/threadmgr.h>
 #include <stdlib.h>
 #include <switch.h>
 
-#include "modules/SceKernelThreadMgr.h"
 #include "log.h"
 #include "module.h"
-#include "protected_bitset.h"
 #include "util.h"
 
+#include "modules/SceKernelThreadMgr.h"
 #include "modules/SceLibKernel.h"
 #include "modules/SceSysmem.h"
 
@@ -18,19 +18,16 @@
 #define SCE_KERNEL_DEFAULT_PRIORITY_GAME_APP           160
 #define SCE_KERNEL_DEFAULT_PRIORITY_USER               SCE_KERNEL_DEFAULT_PRIORITY
 #define SCE_KERNEL_THREAD_STACK_SIZE_DEFAULT_USER_MAIN (256 * 1024)
+#define SCE_KERNEL_TLS_SIZE                            0x800
 
 #define HOS_HIGHEST_PRIORITY 28
 #define HOS_LOWEST_PRIORITY  59
 
-#define MAX_THREADS     32
-#define KERNEL_TLS_SIZE 0x800
-
 static s32 g_vita_thread_info_tls_slot_id;
 
-DECL_PROTECTED_BITSET(VitaThreadInfo, vita_thread_infos, MAX_THREADS)
-DECL_PROTECTED_BITSET_ALLOC(thread_info_alloc, vita_thread_infos, VitaThreadInfo)
-DECL_PROTECTED_BITSET_RELEASE(thread_info_release, vita_thread_infos, VitaThreadInfo)
-DECL_PROTECTED_BITSET_GET_FOR_UID(get_thread_info_for_uid, vita_thread_infos, VitaThreadInfo)
+DICT_DEF2(vita_thread_info_dict, SceUID, M_DEFAULT_OPLIST, VitaThreadInfo *, M_POD_OPLIST)
+static vita_thread_info_dict_t g_vita_thread_infos;
+static RwLock g_vita_thread_infos_lock;
 
 static inline int vita_priority_to_hos_priority(int priority)
 {
@@ -45,6 +42,17 @@ static inline int vita_priority_to_hos_priority(int priority)
            ((priority - SCE_KERNEL_HIGHEST_PRIORITY_USER) *
             (HOS_LOWEST_PRIORITY - HOS_HIGHEST_PRIORITY)) /
                (SCE_KERNEL_LOWEST_PRIORITY_USER - SCE_KERNEL_HIGHEST_PRIORITY_USER);
+}
+
+static VitaThreadInfo *get_thread_info_for_uid(SceUID thid)
+{
+    VitaThreadInfo *ti;
+
+    rwlockReadLock(&g_vita_thread_infos_lock);
+    ti = *vita_thread_info_dict_get(g_vita_thread_infos, thid);
+    rwlockReadUnlock(&g_vita_thread_infos_lock);
+
+    return ti;
 }
 
 static void NORETURN thread_entry_wrapper(void *arg)
@@ -71,7 +79,7 @@ static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int in
     if (priority < 0)
         return priority;
 
-    ti = thread_info_alloc();
+    ti = malloc(sizeof(*ti));
     if (!ti) {
         LOG("Could not allocate thread info for thread \"%s\"", name);
         return SCE_KERNEL_ERROR_NO_MEMORY;
@@ -80,18 +88,22 @@ static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int in
     memset(ti, 0, sizeof(*ti));
     ti->uid = SceSysmem_get_next_uid();
     strncpy(ti->name, name, sizeof(ti->name) - 1);
-    ti->entry = entry;
-    ti->vita_tls = malloc(KERNEL_TLS_SIZE);
+    ti->entry    = entry;
+    ti->vita_tls = malloc(SCE_KERNEL_TLS_SIZE);
 
     res = threadCreate(&ti->thread, thread_entry_wrapper, ti, NULL, stackSize, priority, -2);
     if (R_FAILED(res)) {
         LOG("Error creating thread: 0x%" PRIx32, res);
         free(ti->vita_tls);
-        thread_info_release(ti);
+        free(ti);
         return SCE_KERNEL_ERROR_THREAD_ERROR;
     }
 
     LOG("Created thread \"%s\", thid: 0x%x", name, ti->uid);
+
+    rwlockWriteLock(&g_vita_thread_infos_lock);
+    vita_thread_info_dict_set_at(g_vita_thread_infos, ti->uid, ti);
+    rwlockWriteUnlock(&g_vita_thread_infos_lock);
 
     return ti->uid;
 }
@@ -145,7 +157,11 @@ EXPORT(SceThreadmgr, 0x1BBDE3D9, int, sceKernelDeleteThread, SceUID thid)
 
     free(ti->argp);
     free(ti->vita_tls);
-    thread_info_release(ti);
+    rwlockWriteLock(&g_vita_thread_infos_lock);
+    vita_thread_info_dict_erase(g_vita_thread_infos, thid);
+    rwlockWriteUnlock(&g_vita_thread_infos_lock);
+    free(ti);
+    LOG("Deleted thread 0x%x", thid);
 
     return 0;
 }
@@ -159,7 +175,7 @@ EXPORT(SceThreadmgrCoredumpTime, 0x0C8A38E1, int NORETURN, sceKernelExitThread, 
 {
     VitaThreadInfo *ti = SceKernelThreadMgr_get_thread_info();
 
-    ti->return_status = status;
+    ti->return_status  = status;
     threadExit();
 }
 
@@ -216,7 +232,7 @@ int SceKernelThreadMgr_main_entry(SceKernelThreadEntry entry, int args, void *ar
 
     process_exit_event = SceLibKernel_get_process_exit_uevent();
 
-    res = waitSingle(waiterForUEvent(process_exit_event), -1);
+    res                = waitSingle(waiterForUEvent(process_exit_event), -1);
     if (R_FAILED(res)) {
         LOG("Error waiting for the process to finish: 0x%" PRIx32, res);
         return -1;
@@ -255,6 +271,8 @@ DECLARE_LIBRARY(SceThreadmgrCoredumpTime, 0x5E8D0E22);
 int SceKernelThreadMgr_init(void)
 {
     g_vita_thread_info_tls_slot_id = threadTlsAlloc(NULL);
+    vita_thread_info_dict_init(g_vita_thread_infos);
+    rwlockInit(&g_vita_thread_infos_lock);
 
     return 0;
 }
@@ -262,6 +280,7 @@ int SceKernelThreadMgr_init(void)
 int SceKernelThreadMgr_finish(void)
 {
     threadTlsFree(g_vita_thread_info_tls_slot_id);
+    vita_thread_info_dict_clear(g_vita_thread_infos);
 
     return 0;
 }

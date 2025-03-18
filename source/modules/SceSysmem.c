@@ -45,7 +45,7 @@ EXPORT(SceSysmem, 0xB9D5EBDE, SceUID, sceKernelAllocMemBlock, const char *name,
     else
         alignment = 4 * 1024;
 
-    block->uid = SceSysmem_get_next_uid();
+    block->uid  = SceSysmem_get_next_uid();
     block->base = aligned_alloc(alignment, size);
     block->size = size;
 
