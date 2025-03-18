@@ -1,5 +1,4 @@
-vita-headers
-Vita3k
+external/*
 include/arm-encode.h
 include/circ_buf.h
 include/sce-elf-defs.h

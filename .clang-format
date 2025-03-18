@@ -2,14 +2,10 @@ BasedOnStyle: LLVM
 IndentWidth: 4
 UseTab: Never
 BreakBeforeBraces: Linux
-AlignConsecutiveAssignments:
-  Enabled: true
-  AcrossEmptyLines: true
-  AcrossComments: false
+AlignConsecutiveMacros: Consecutive
 AllowShortEnumsOnASingleLine: false
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortFunctionsOnASingleLine: false
-AlignConsecutiveMacros: true
 ColumnLimit: 100
 AlignArrayOfStructures: Right
 IncludeBlocks: Regroup
