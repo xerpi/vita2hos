@@ -1,5 +1,6 @@
 #include <dirent.h>
 #include <errno.h>
+#include <m-dict.h>
 #include <psp2/kernel/error.h>
 #include <psp2common/types.h>
 #include <stdarg.h>
@@ -13,15 +14,11 @@
 
 #include "log.h"
 #include "module.h"
-#include "protected_bitset.h"
 #include "util.h"
 
 #include "modules/SceKernelThreadMgr.h"
 #include "modules/SceLibKernel.h"
 #include "modules/SceSysmem.h"
-
-#define MAX_OPENED_FILES 32
-#define MAX_OPENED_DIRS  32
 
 typedef struct {
     uint32_t index;
@@ -40,15 +37,35 @@ typedef struct {
 static UEvent g_process_exit_event;
 static atomic_int g_process_exit_res;
 
-DECL_PROTECTED_BITSET(VitaOpenedFile, vita_opened_files, MAX_OPENED_FILES)
-DECL_PROTECTED_BITSET_ALLOC(opened_file_alloc, vita_opened_files, VitaOpenedFile)
-DECL_PROTECTED_BITSET_RELEASE(opened_file_release, vita_opened_files, VitaOpenedFile)
-DECL_PROTECTED_BITSET_GET_FOR_UID(get_opened_file_for_fd, vita_opened_files, VitaOpenedFile)
+DICT_DEF2(vita_opened_files_dict, SceUID, M_DEFAULT_OPLIST, VitaOpenedFile *, M_POD_OPLIST)
+static vita_opened_files_dict_t g_vita_opened_files;
+static RwLock g_vita_opened_files_lock;
 
-DECL_PROTECTED_BITSET(VitaOpenedDir, vita_opened_dirs, MAX_OPENED_DIRS)
-DECL_PROTECTED_BITSET_ALLOC(opened_dir_alloc, vita_opened_dirs, VitaOpenedDir)
-DECL_PROTECTED_BITSET_RELEASE(opened_dir_release, vita_opened_dirs, VitaOpenedDir)
-DECL_PROTECTED_BITSET_GET_FOR_UID(get_opened_dir_for_fd, vita_opened_dirs, VitaOpenedDir)
+DICT_DEF2(vita_opened_dirs_dict, SceUID, M_DEFAULT_OPLIST, VitaOpenedDir *, M_POD_OPLIST)
+static vita_opened_dirs_dict_t g_vita_opened_dirs;
+static RwLock g_vita_opened_dirs_lock;
+
+static VitaOpenedFile *get_opened_file_for_fd(SceUID fd)
+{
+    VitaOpenedFile *vfile;
+
+    rwlockReadLock(&g_vita_opened_files_lock);
+    vfile = *vita_opened_files_dict_get(g_vita_opened_files, fd);
+    rwlockReadUnlock(&g_vita_opened_files_lock);
+
+    return vfile;
+}
+
+static VitaOpenedDir *get_opened_dir_for_fd(SceUID fd)
+{
+    VitaOpenedDir *vdir;
+
+    rwlockReadLock(&g_vita_opened_dirs_lock);
+    vdir = *vita_opened_dirs_dict_get(g_vita_opened_dirs, fd);
+    rwlockReadUnlock(&g_vita_opened_dirs_lock);
+
+    return vdir;
+}
 
 EXPORT(SceLibKernel, 0xB295EB61, void *, sceKernelGetTLSAddr, int key)
 {
@@ -149,15 +166,20 @@ EXPORT(SceLibKernel, 0x6C60AC61, SceUID, sceIoOpen, const char *file, int flags,
     if (!fp)
         return SCE_ERROR_ERRNO_ENODEV;
 
-    vfile = opened_file_alloc();
+    vfile = malloc(sizeof(*vfile));
     if (!vfile) {
         fclose(fp);
         return SCE_ERROR_ERRNO_EMFILE;
     }
 
+    memset(vfile, 0, sizeof(*vfile));
     vfile->uid  = SceSysmem_get_next_uid();
     vfile->fp   = fp;
     vfile->file = strdup(file);
+
+    rwlockWriteLock(&g_vita_opened_files_lock);
+    vita_opened_files_dict_set_at(g_vita_opened_files, vfile->uid, vfile);
+    rwlockWriteUnlock(&g_vita_opened_files_lock);
 
     return vfile->uid;
 }
@@ -165,16 +187,19 @@ EXPORT(SceLibKernel, 0x6C60AC61, SceUID, sceIoOpen, const char *file, int flags,
 EXPORT(SceIofilemgr, 0xC70B8886, int, sceIoClose, SceUID fd)
 {
     VitaOpenedFile *vfile = get_opened_file_for_fd(fd);
-    FILE *fp;
+    int ret;
 
     if (!vfile)
         return SCE_ERROR_ERRNO_EBADF;
 
-    fp = vfile->fp;
+    ret = fclose(vfile->fp);
+    rwlockWriteLock(&g_vita_opened_files_lock);
+    vita_opened_files_dict_erase(g_vita_opened_files, fd);
+    rwlockWriteUnlock(&g_vita_opened_files_lock);
     free(vfile->file);
-    opened_file_release(vfile);
+    free(vfile);
 
-    if (fclose(fp))
+    if (ret)
         return SCE_ERROR_ERRNO_EBADF;
 
     return 0;
@@ -230,15 +255,20 @@ EXPORT(SceLibKernel, 0xA9283DD0, SceUID, sceIoDopen, const char *dirname)
     if (!dir)
         return SCE_ERROR_ERRNO_ENODEV;
 
-    vdir = opened_dir_alloc();
+    vdir = malloc(sizeof(*vdir));
     if (!vdir) {
         closedir(dir);
         return SCE_ERROR_ERRNO_EMFILE;
     }
 
+    memset(vdir, 0, sizeof(*vdir));
     vdir->uid  = SceSysmem_get_next_uid();
     vdir->dir  = dir;
     vdir->path = strdup(dirname);
+
+    rwlockWriteLock(&g_vita_opened_dirs_lock);
+    vita_opened_dirs_dict_set_at(g_vita_opened_dirs, vdir->uid, vdir);
+    rwlockWriteUnlock(&g_vita_opened_dirs_lock);
 
     return vdir->uid;
 }
@@ -246,16 +276,19 @@ EXPORT(SceLibKernel, 0xA9283DD0, SceUID, sceIoDopen, const char *dirname)
 EXPORT(SceIofilemgr, 0x422A221A, int, sceIoDclose, SceUID fd)
 {
     VitaOpenedDir *vdir = get_opened_dir_for_fd(fd);
-    DIR *dir;
+    int ret;
 
     if (!vdir)
         return SCE_ERROR_ERRNO_EBADF;
 
-    dir = vdir->dir;
+    ret = closedir(vdir->dir);
     free(vdir->path);
-    opened_dir_release(vdir);
+    rwlockWriteLock(&g_vita_opened_dirs_lock);
+    vita_opened_dirs_dict_erase(g_vita_opened_dirs, fd);
+    rwlockWriteUnlock(&g_vita_opened_dirs_lock);
+    free(vdir);
 
-    if (closedir(dir))
+    if (ret)
         return SCE_ERROR_ERRNO_EBADF;
 
     return 0;

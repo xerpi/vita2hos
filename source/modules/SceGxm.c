@@ -12,7 +12,6 @@
 #include "dk_helpers.h"
 #include "log.h"
 #include "module.h"
-#include "protected_bitset.h"
 #include "uam_compiler_iface_c.h"
 #include "util.h"
 #include "vita3k_shader_recompiler_iface_c.h"
