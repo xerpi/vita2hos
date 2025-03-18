@@ -56,7 +56,7 @@ EXPORT(SceSysmem, 0xB9D5EBDE, SceUID, sceKernelAllocMemBlock, const char *name,
     }
 
     memset(block, 0, sizeof(*block));
-    block->uid  = SceSysmem_get_next_uid();
+    block->uid = SceSysmem_get_next_uid();
     block->base = base;
     block->size = size;
 

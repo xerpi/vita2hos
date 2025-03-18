@@ -36,8 +36,8 @@ int netlog_init(void)
 
     /* Set up the destination address (multicast group) */
     dest_addr = (struct sockaddr_in){
-        .sin_family      = AF_INET,
-        .sin_port        = htons(PORT),
+        .sin_family = AF_INET,
+        .sin_port = htons(PORT),
         .sin_addr.s_addr = inet_addr(MULTICAST_ADDR),
     };
 

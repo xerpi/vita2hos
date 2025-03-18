@@ -54,6 +54,7 @@ EXPORT(SceCtrl, 0xA9C3CED6, int, sceCtrlPeekBufferPositive, int port, SceCtrlDat
         vita_buttons |= SCE_CTRL_SQUARE;
 
     pad_data->buttons = vita_buttons;
+
     pad_data->lx = (255 * (analog_stick_l.x - JOYSTICK_MIN)) / (JOYSTICK_MAX - JOYSTICK_MIN);
     pad_data->ly =
         (255 * ((255 - analog_stick_l.y) - JOYSTICK_MIN)) / (JOYSTICK_MAX - JOYSTICK_MIN);

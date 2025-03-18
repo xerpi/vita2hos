@@ -441,7 +441,7 @@ EXPORT(SceGxm, 0xB0F1E4EC, int, sceGxmInitialize, const SceGxmInitializeParams *
     /* Create graphics queue */
     dkQueueMakerDefaults(&queue_maker, g_dk_device);
     queue_maker.flags = DkQueueFlags_Graphics;
-    g_render_queue    = dkQueueCreate(&queue_maker);
+    g_render_queue = dkQueueCreate(&queue_maker);
 
     /* Create memory block for the "notification region" */
     g_notification_region_memblock =
@@ -450,19 +450,19 @@ EXPORT(SceGxm, 0xB0F1E4EC, int, sceGxmInitialize, const SceGxmInitializeParams *
 
     /* Allocate and initialize the display queue, and its worker thread */
     display_queue_num_entries = next_pow2(params->displayQueueMaxPendingCount + 1);
-    g_display_queue           = malloc(sizeof(DisplayQueueControlBlock) +
-                                       (sizeof(DisplayQueueEntry) + params->displayQueueCallbackDataSize) *
-                                           display_queue_num_entries);
+    g_display_queue = malloc(sizeof(DisplayQueueControlBlock) +
+                             (sizeof(DisplayQueueEntry) + params->displayQueueCallbackDataSize) *
+                                 display_queue_num_entries);
     assert(g_display_queue);
-    g_display_queue->head        = 0;
-    g_display_queue->tail        = 0;
+    g_display_queue->head = 0;
+    g_display_queue->tail = 0;
     g_display_queue->num_entries = display_queue_num_entries;
     g_display_queue->entries =
         (DisplayQueueEntry *)((char *)g_display_queue + sizeof(DisplayQueueControlBlock));
-    g_display_queue->display_queue_max_pending_count  = params->displayQueueMaxPendingCount;
-    g_display_queue->display_queue_callback           = params->displayQueueCallback;
+    g_display_queue->display_queue_max_pending_count = params->displayQueueMaxPendingCount;
+    g_display_queue->display_queue_callback = params->displayQueueCallback;
     g_display_queue->display_queue_callback_data_size = params->displayQueueCallbackDataSize;
-    g_display_queue->exit_thread                      = 0;
+    g_display_queue->exit_thread = 0;
     g_display_queue->thid = sceKernelCreateThread("SceGxmDisplayQueue", SceGxmDisplayQueue_thread,
                                                   64, 0x1000, 0, 0, NULL);
     assert(g_display_queue->thid > 0);
@@ -480,9 +480,9 @@ EXPORT(SceGxm, 0xB0F1E4EC, int, sceGxmInitialize, const SceGxmInitializeParams *
     sceKernelStartThread(g_display_queue->thid, sizeof(g_display_queue), &g_display_queue);
 
     /* Create memory block for the shader code */
-    g_code_memblock   = dk_alloc_memblock(g_dk_device, 64 * 1024,
-                                          DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached |
-                                              DkMemBlockFlags_Code);
+    g_code_memblock = dk_alloc_memblock(g_dk_device, 64 * 1024,
+                                        DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached |
+                                            DkMemBlockFlags_Code);
 
     g_code_mem_offset = 0;
 
@@ -540,7 +540,7 @@ EXPORT(SceGxm, 0xE84CE5B4, int, sceGxmCreateContext, const SceGxmContextParams *
     ctx->fragment_rb.memblock = SceSysmem_get_dk_memblock_for_addr(params->fragmentRingBufferMem);
     assert(ctx->fragment_rb.memblock);
     assert(params->fragmentRingBufferMem == dkMemBlockGetCpuAddr(ctx->fragment_rb.memblock));
-    ctx->fragment_rb.size             = params->fragmentRingBufferMemSize;
+    ctx->fragment_rb.size = params->fragmentRingBufferMemSize;
 
     ctx->gxm_vert_unif_block_memblock = dk_alloc_memblock(
         g_dk_device, ALIGN(sizeof(struct GXMRenderVertUniformBlock), DK_UNIFORM_BUF_ALIGNMENT),
@@ -560,36 +560,36 @@ EXPORT(SceGxm, 0xE84CE5B4, int, sceGxmCreateContext, const SceGxmContextParams *
     memset(&ctx->state, 0, sizeof(ctx->state));
 
     dkRasterizerStateDefaults(&ctx->state.rasterizer);
-    ctx->state.rasterizer.cullMode  = DkFace_None;
+    ctx->state.rasterizer.cullMode = DkFace_None;
     ctx->state.rasterizer.frontFace = DkFrontFace_CW;
 
     dkColorStateDefaults(&ctx->state.color);
     dkColorWriteStateDefaults(&ctx->state.color_write);
 
-    ctx->state.depth_stencil.depthTestEnable         = true;
-    ctx->state.depth_stencil.depthWriteEnable        = true;
-    ctx->state.depth_stencil.stencilTestEnable       = true;
-    ctx->state.depth_stencil.depthCompareOp          = DkCompareOp_Lequal;
+    ctx->state.depth_stencil.depthTestEnable = true;
+    ctx->state.depth_stencil.depthWriteEnable = true;
+    ctx->state.depth_stencil.stencilTestEnable = true;
+    ctx->state.depth_stencil.depthCompareOp = DkCompareOp_Lequal;
 
-    ctx->state.depth_stencil.stencilFrontFailOp      = DkStencilOp_Keep;
-    ctx->state.depth_stencil.stencilFrontPassOp      = DkStencilOp_Keep;
+    ctx->state.depth_stencil.stencilFrontFailOp = DkStencilOp_Keep;
+    ctx->state.depth_stencil.stencilFrontPassOp = DkStencilOp_Keep;
     ctx->state.depth_stencil.stencilFrontDepthFailOp = DkStencilOp_Keep;
-    ctx->state.depth_stencil.stencilFrontCompareOp   = DkCompareOp_Always;
+    ctx->state.depth_stencil.stencilFrontCompareOp = DkCompareOp_Always;
 
-    ctx->state.depth_stencil.stencilBackFailOp       = DkStencilOp_Keep;
-    ctx->state.depth_stencil.stencilBackPassOp       = DkStencilOp_Keep;
-    ctx->state.depth_stencil.stencilBackDepthFailOp  = DkStencilOp_Keep;
-    ctx->state.depth_stencil.stencilBackCompareOp    = DkCompareOp_Always;
+    ctx->state.depth_stencil.stencilBackFailOp = DkStencilOp_Keep;
+    ctx->state.depth_stencil.stencilBackPassOp = DkStencilOp_Keep;
+    ctx->state.depth_stencil.stencilBackDepthFailOp = DkStencilOp_Keep;
+    ctx->state.depth_stencil.stencilBackCompareOp = DkCompareOp_Always;
 
-    ctx->state.front_stencil.ref                     = 0;
-    ctx->state.front_stencil.compare_mask            = 0;
-    ctx->state.front_stencil.write_mask              = 0;
+    ctx->state.front_stencil.ref = 0;
+    ctx->state.front_stencil.compare_mask = 0;
+    ctx->state.front_stencil.write_mask = 0;
 
-    ctx->state.back_stencil.ref                      = 0;
-    ctx->state.back_stencil.compare_mask             = 0;
-    ctx->state.back_stencil.write_mask               = 0;
+    ctx->state.back_stencil.ref = 0;
+    ctx->state.back_stencil.compare_mask = 0;
+    ctx->state.back_stencil.write_mask = 0;
 
-    *context                                         = ctx;
+    *context = ctx;
 
     return 0;
 }
@@ -664,7 +664,7 @@ EXPORT(SceGxm, 0x05032658, int, sceGxmShaderPatcherCreate, const SceGxmShaderPat
 
     memset(shader_patcher, 0, sizeof(*shader_patcher));
     shader_patcher->params = *params;
-    *shaderPatcher         = shader_patcher;
+    *shaderPatcher = shader_patcher;
 
     return 0;
 }
@@ -766,11 +766,11 @@ EXPORT(SceGxm, 0xB7BBA6D5, int, sceGxmShaderPatcherCreateVertexProgram,
         return SCE_KERNEL_ERROR_NO_MEMORY;
 
     memset(vertex_program, 0, sizeof(*vertex_program));
-    vertex_program->programId  = programId;
+    vertex_program->programId = programId;
     vertex_program->attributes = calloc(attributeCount, sizeof(SceGxmVertexAttribute));
     memcpy(vertex_program->attributes, attributes, attributeCount * sizeof(SceGxmVertexAttribute));
     vertex_program->attributeCount = attributeCount;
-    vertex_program->streams        = calloc(streamCount, sizeof(SceGxmVertexStream));
+    vertex_program->streams = calloc(streamCount, sizeof(SceGxmVertexStream));
     memcpy(vertex_program->streams, streams, streamCount * sizeof(SceGxmVertexStream));
     vertex_program->streamCount = streamCount;
 
@@ -810,8 +810,8 @@ EXPORT(SceGxm, 0x4ED2E49D, int, sceGxmShaderPatcherCreateFragmentProgram,
         return SCE_KERNEL_ERROR_NO_MEMORY;
 
     memset(fragment_program, 0, sizeof(*fragment_program));
-    fragment_program->programId       = programId;
-    fragment_program->outputFormat    = outputFormat;
+    fragment_program->programId = programId;
+    fragment_program->outputFormat = outputFormat;
     fragment_program->multisampleMode = multisampleMode;
     if (blendInfo) {
         fragment_program->blendInfo = *blendInfo;
@@ -869,7 +869,7 @@ EXPORT(SceGxm, 0x207AF96B, int, sceGxmCreateRenderTarget, const SceGxmRenderTarg
         return SCE_KERNEL_ERROR_NO_MEMORY;
 
     render_target->params = *params;
-    *renderTarget         = render_target;
+    *renderTarget = render_target;
 
     return 0;
 }
@@ -888,14 +888,14 @@ EXPORT(SceGxm, 0xED0F6E25, int, sceGxmColorSurfaceInit, SceGxmColorSurface *surf
     SceGxmColorSurfaceInner *inner = (SceGxmColorSurfaceInner *)surface;
 
     memset(inner, 0, sizeof(*inner));
-    inner->disabled           = 0;
-    inner->downscale          = scaleMode == SCE_GXM_COLOR_SURFACE_SCALE_MSAA_DOWNSCALE;
-    inner->width              = width;
-    inner->height             = height;
-    inner->strideInPixels     = strideInPixels;
-    inner->data               = data;
-    inner->colorFormat        = colorFormat;
-    inner->surfaceType        = surfaceType;
+    inner->disabled = 0;
+    inner->downscale = scaleMode == SCE_GXM_COLOR_SURFACE_SCALE_MSAA_DOWNSCALE;
+    inner->width = width;
+    inner->height = height;
+    inner->strideInPixels = strideInPixels;
+    inner->data = data;
+    inner->colorFormat = colorFormat;
+    inner->surfaceType = surfaceType;
     inner->outputRegisterSize = outputRegisterSize;
 
     return 0;
@@ -919,9 +919,9 @@ EXPORT(SceGxm, 0xCA9D41D1, int, sceGxmDepthStencilSurfaceInit, SceGxmDepthStenci
          (SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_TYPE_MASK << SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_TYPE_OFFSET)) |
         (depthStencilFormat & (SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_FORMAT_MASK
                                << SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_FORMAT_OFFSET));
-    surface->depthData         = depthData;
-    surface->stencilData       = stencilData;
-    surface->backgroundDepth   = 1.0f;
+    surface->depthData = depthData;
+    surface->stencilData = stencilData;
+    surface->backgroundDepth = 1.0f;
     surface->backgroundControl = SCE_GXM_DEPTH_STENCIL_BG_CTRL_MASK_BIT;
 
     return 0;
@@ -931,7 +931,7 @@ EXPORT(SceGxm, 0x14BD831F, void, sceGxmSetFrontDepthFunc, SceGxmContext *context
        SceGxmDepthFunc depthFunc)
 {
     context->state.depth_stencil.depthCompareOp = gxm_depth_func_to_dk_compare_op(depthFunc);
-    context->state.dirty.bit.depth_stencil      = true;
+    context->state.dirty.bit.depth_stencil = true;
 
     if (!context->state.two_sided_mode)
         sceGxmSetBackDepthFunc(context, depthFunc);
@@ -941,7 +941,7 @@ EXPORT(SceGxm, 0xF32CBF34, void, sceGxmSetFrontDepthWriteEnable, SceGxmContext *
        SceGxmDepthWriteMode enable)
 {
     context->state.depth_stencil.depthWriteEnable = (enable == SCE_GXM_DEPTH_WRITE_ENABLED) ? 1 : 0;
-    context->state.dirty.bit.depth_stencil        = true;
+    context->state.dirty.bit.depth_stencil = true;
 
     if (!context->state.two_sided_mode)
         sceGxmSetBackDepthWriteEnable(context, enable);
@@ -950,7 +950,7 @@ EXPORT(SceGxm, 0xF32CBF34, void, sceGxmSetFrontDepthWriteEnable, SceGxmContext *
 EXPORT(SceGxm, 0x8FA6FE44, void, sceGxmSetFrontStencilRef, SceGxmContext *context,
        unsigned int sref)
 {
-    context->state.front_stencil.ref       = sref;
+    context->state.front_stencil.ref = sref;
     context->state.dirty.bit.front_stencil = true;
 
     if (!context->state.two_sided_mode)
@@ -971,7 +971,7 @@ EXPORT(SceGxm, 0xC18B706B, void, sceGxmSetBackDepthWriteEnable, SceGxmContext *c
 
 EXPORT(SceGxm, 0x866A0517, void, sceGxmSetBackStencilRef, SceGxmContext *context, unsigned int sref)
 {
-    context->state.back_stencil.ref       = sref;
+    context->state.back_stencil.ref = sref;
     context->state.dirty.bit.back_stencil = true;
 }
 
@@ -984,10 +984,10 @@ EXPORT(SceGxm, 0xB8645A9A, void, sceGxmSetFrontStencilFunc, SceGxmContext *conte
     context->state.depth_stencil.stencilFrontDepthFailOp =
         gxm_stencil_op_to_dk_stencil_op(depthFail);
     context->state.depth_stencil.stencilFrontCompareOp = gxm_stencil_func_to_dk_compare_op(func);
-    context->state.front_stencil.compare_mask          = compareMask;
-    context->state.front_stencil.write_mask            = writeMask;
-    context->state.dirty.bit.depth_stencil             = true;
-    context->state.dirty.bit.front_stencil             = true;
+    context->state.front_stencil.compare_mask = compareMask;
+    context->state.front_stencil.write_mask = writeMask;
+    context->state.dirty.bit.depth_stencil = true;
+    context->state.dirty.bit.front_stencil = true;
 
     if (!context->state.two_sided_mode) {
         sceGxmSetBackStencilFunc(context, func, stencilFail, depthFail, depthPass, compareMask,
@@ -1003,10 +1003,10 @@ EXPORT(SceGxm, 0x1A68C8D2, void, sceGxmSetBackStencilFunc, SceGxmContext *contex
     context->state.depth_stencil.stencilBackDepthFailOp =
         gxm_stencil_op_to_dk_stencil_op(depthFail);
     context->state.depth_stencil.stencilBackCompareOp = gxm_stencil_func_to_dk_compare_op(func);
-    context->state.back_stencil.compare_mask          = compareMask;
-    context->state.back_stencil.write_mask            = writeMask;
-    context->state.dirty.bit.depth_stencil            = true;
-    context->state.dirty.bit.back_stencil             = true;
+    context->state.back_stencil.compare_mask = compareMask;
+    context->state.back_stencil.write_mask = writeMask;
+    context->state.dirty.bit.depth_stencil = true;
+    context->state.dirty.bit.back_stencil = true;
 }
 
 static inline void dk_image_view_for_gxm_color_surface(DkImage *image, DkImageView *view,
@@ -1019,7 +1019,7 @@ static inline void dk_image_view_for_gxm_color_surface(DkImage *image, DkImageVi
     dkImageLayoutMakerDefaults(&maker, g_dk_device);
     maker.flags = gxm_color_surface_type_to_dk_image_flags(surface->surfaceType) |
                   DkImageFlags_UsageRender | DkImageFlags_Usage2DEngine;
-    maker.format        = gxm_color_format_to_dk_image_format(surface->colorFormat);
+    maker.format = gxm_color_format_to_dk_image_format(surface->colorFormat);
     maker.dimensions[0] = surface->width;
     maker.dimensions[1] = surface->height;
     maker.pitchStride =
@@ -1038,8 +1038,8 @@ dk_image_view_for_gxm_depth_stencil_surface(DkImage *image, DkImageView *view, D
     DkImageLayout layout;
 
     dkImageLayoutMakerDefaults(&maker, g_dk_device);
-    maker.flags         = DkImageFlags_UsageRender;
-    maker.format        = DkImageFormat_Z24S8;
+    maker.flags = DkImageFlags_UsageRender;
+    maker.format = DkImageFormat_Z24S8;
     maker.dimensions[0] = width;
     maker.dimensions[1] = height;
     dkImageLayoutInitialize(&layout, &maker);
@@ -1053,16 +1053,16 @@ static void set_vita3k_gxm_uniform_blocks(SceGxmContext *context, const DkViewpo
     struct GXMRenderVertUniformBlock vert_unif = {
         .viewport_flip = { 1.0f, 1.0f, 1.0f, 1.0f },
         .viewport_flag = (0) ? 0.0f : 1.0f,
-        .z_offset      = 0.0f,
-        .z_scale       = 1.0f,
-        .screen_width  = viewport->width,
+        .z_offset = 0.0f,
+        .z_scale = 1.0f,
+        .screen_width = viewport->width,
         .screen_height = viewport->height
     };
 
-    struct GXMRenderFragUniformBlock frag_unif = { .back_disabled  = 0.0f,
+    struct GXMRenderFragUniformBlock frag_unif = { .back_disabled = 0.0f,
                                                    .front_disabled = 0.0f,
-                                                   .writing_mask   = 0.0f,
-                                                   .use_raw_image  = 0.0f,
+                                                   .writing_mask = 0.0f,
+                                                   .use_raw_image = 0.0f,
                                                    .res_multiplier = 0 };
 
     memcpy(dkMemBlockGetCpuAddr(context->gxm_vert_unif_block_memblock), &vert_unif,
@@ -1085,15 +1085,15 @@ static void ensure_shadow_ds_surface(SceGxmContext *context, uint32_t width, uin
     uint32_t ds_surface_size, ds_surface_align;
 
     dkImageLayoutMakerDefaults(&maker, g_dk_device);
-    maker.flags         = DkImageFlags_UsageRender;
-    maker.format        = DkImageFormat_Z24S8;
+    maker.flags = DkImageFlags_UsageRender;
+    maker.format = DkImageFormat_Z24S8;
     maker.dimensions[0] = width;
     maker.dimensions[1] = height;
     dkImageLayoutInitialize(&layout, &maker);
 
-    ds_surface_size  = dkImageLayoutGetSize(&layout);
+    ds_surface_size = dkImageLayoutGetSize(&layout);
     ds_surface_align = dkImageLayoutGetAlignment(&layout);
-    ds_surface_size  = ALIGN(ds_surface_size, ds_surface_align);
+    ds_surface_size = ALIGN(ds_surface_size, ds_surface_align);
 
     LOG("Creating D/S surface: %d x %d, size %d, align: %d", width, height, ds_surface_size,
         ds_surface_align);
@@ -1115,9 +1115,9 @@ static void ensure_shadow_ds_surface(SceGxmContext *context, uint32_t width, uin
     dkImageViewDefaults(&context->state.shadow_ds_surface.view,
                         &context->state.shadow_ds_surface.image);
 
-    context->state.shadow_ds_surface.width  = width;
+    context->state.shadow_ds_surface.width = width;
     context->state.shadow_ds_surface.height = height;
-    context->state.shadow_ds_surface.size   = ds_surface_size;
+    context->state.shadow_ds_surface.size = ds_surface_size;
 }
 
 EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsigned int flags,
@@ -1128,10 +1128,10 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
     DkMemBlock color_surface_block;
     DkImage color_surface_image;
     DkImageView color_surface_view;
-    uint16_t rt_width   = renderTarget->params.width;
-    uint16_t rt_height  = renderTarget->params.height;
+    uint16_t rt_width = renderTarget->params.width;
+    uint16_t rt_height = renderTarget->params.height;
     DkViewport viewport = { 0.0f, 0.0f, (float)rt_width, (float)rt_height, 0.0f, 1.0f };
-    DkScissor scissor   = { 0, 0, rt_width, rt_height };
+    DkScissor scissor = { 0, 0, rt_width, rt_height };
     SceGxmColorSurfaceInner *color_surface_inner = (SceGxmColorSurfaceInner *)colorSurface;
 
     if (context->state.in_scene)
@@ -1178,7 +1178,7 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
     dkCmdBufBindColorState(context->cmdbuf, &context->state.color);
     set_vita3k_gxm_uniform_blocks(context, &viewport);
 
-    context->state.vertex_rb.head   = 0;
+    context->state.vertex_rb.head = 0;
     context->state.fragment_rb.head = 0;
 
     /* Wait until the framebuffer is swapped out before writing to it */
@@ -1195,9 +1195,9 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
         depthStencil && !(depthStencil->zlsControl & SCE_GXM_DEPTH_STENCIL_FORCE_STORE_ENABLED);
 
     /* Mark all state as dirty to make sure we bind everything before the first draw call */
-    context->state.dirty.raw            = ~(uint32_t)0;
+    context->state.dirty.raw = ~(uint32_t)0;
     context->state.fragment_sync_object = fragmentSyncObject;
-    context->state.in_scene             = true;
+    context->state.in_scene = true;
 
     return 0;
 }
@@ -1328,7 +1328,7 @@ EXPORT(SceGxm, 0xB98C5B0D, int, sceGxmDisplayQueueFinish, void)
 EXPORT(SceGxm, 0x31FF8ABD, void, sceGxmSetVertexProgram, SceGxmContext *context,
        const SceGxmVertexProgram *vertexProgram)
 {
-    context->state.vertex_program          = vertexProgram;
+    context->state.vertex_program = vertexProgram;
     context->state.dirty.bit.vertex_shader = true;
 }
 
@@ -1343,9 +1343,9 @@ EXPORT(SceGxm, 0xAD2F48D9, void, sceGxmSetFragmentProgram, SceGxmContext *contex
            DkColorMask_A * !!(fragmentProgram->blendInfo.colorMask & SCE_GXM_COLOR_MASK_A);
 
     dkColorWriteStateSetMask(&context->state.color_write, 0, mask);
-    context->state.dirty.bit.color_write     = true;
+    context->state.dirty.bit.color_write = true;
 
-    context->state.fragment_program          = fragmentProgram;
+    context->state.fragment_program = fragmentProgram;
     context->state.dirty.bit.fragment_shader = true;
 }
 
@@ -1353,7 +1353,7 @@ EXPORT(SceGxm, 0x29C34DF5, int, sceGxmSetFragmentTexture, SceGxmContext *context
        unsigned int textureIndex, const SceGxmTexture *texture)
 {
     context->state.fragment_textures[textureIndex] = *(SceGxmTextureInner *)texture;
-    context->state.dirty.bit.fragment_textures     = true;
+    context->state.dirty.bit.fragment_textures = true;
     return 0;
 }
 
@@ -1414,7 +1414,7 @@ EXPORT(SceGxm, 0x97118913, int, sceGxmReserveVertexDefaultUniformBuffer, SceGxmC
         return SCE_GXM_ERROR_NULL_PROGRAM;
 
     program = context->state.vertex_program->programId->programHeader;
-    size    = program->default_uniform_buffer_count * sizeof(float);
+    size = program->default_uniform_buffer_count * sizeof(float);
     if (size == 0) {
         *uniformBuffer = NULL;
         return 0;
@@ -1473,7 +1473,7 @@ EXPORT(SceGxm, 0x7B1FABB6, int, sceGxmReserveFragmentDefaultUniformBuffer, SceGx
         return SCE_GXM_ERROR_NULL_PROGRAM;
 
     program = context->state.fragment_program->programId->programHeader;
-    size    = program->default_uniform_buffer_count * sizeof(float);
+    size = program->default_uniform_buffer_count * sizeof(float);
     if (size == 0) {
         *uniformBuffer = NULL;
         return 0;
@@ -1515,14 +1515,14 @@ EXPORT(SceGxm, 0x65DD0C84, int, sceGxmSetUniformDataF, void *uniformBuffer,
     else
         alignment = 4;
 
-    uint32_t scalar_size          = gxm_parameter_type_size(parameter->type);
-    uint32_t vector_size          = scalar_size * parameter->component_count;
-    uint32_t vector_index         = componentOffset / parameter->component_count;
-    uint32_t scalar_index         = componentOffset % parameter->component_count;
-    uint32_t vector_mod_align     = vector_size % alignment;
+    uint32_t scalar_size = gxm_parameter_type_size(parameter->type);
+    uint32_t vector_size = scalar_size * parameter->component_count;
+    uint32_t vector_index = componentOffset / parameter->component_count;
+    uint32_t scalar_index = componentOffset % parameter->component_count;
+    uint32_t vector_mod_align = vector_size % alignment;
     uint32_t vector_padding_bytes = vector_mod_align ? alignment - vector_mod_align : 0;
 
-    uint32_t offset               = parameter->resource_index * sizeof(uint32_t) +
+    uint32_t offset = parameter->resource_index * sizeof(uint32_t) +
                       vector_index * (vector_size + vector_padding_bytes) +
                       scalar_index * scalar_size;
 
@@ -1552,26 +1552,26 @@ static int init_texture_base(SceGxmTextureInner *texture, const void *data,
         return SCE_GXM_ERROR_INVALID_VALUE;
 
     texture->mip_count = MIN2(15, mipCount - 1);
-    texture->format0   = (tex_format & 0x80000000) >> 31;
-    texture->lod_bias  = 31;
+    texture->format0 = (tex_format & 0x80000000) >> 31;
+    texture->lod_bias = 31;
 
     if ((texture_type == SCE_GXM_TEXTURE_SWIZZLED) || (texture_type == SCE_GXM_TEXTURE_CUBE)) {
         texture->uaddr_mode = texture->vaddr_mode = SCE_GXM_TEXTURE_ADDR_MIRROR;
-        texture->height_base2                     = highest_set_bit(height);
-        texture->width_base2                      = highest_set_bit(width);
+        texture->height_base2 = highest_set_bit(height);
+        texture->width_base2 = highest_set_bit(width);
     } else {
         texture->uaddr_mode = texture->vaddr_mode = SCE_GXM_TEXTURE_ADDR_CLAMP;
-        texture->height                           = height - 1;
-        texture->width                            = width - 1;
+        texture->height = height - 1;
+        texture->width = width - 1;
     }
 
-    texture->base_format    = (tex_format & 0x1F000000) >> 24;
-    texture->type           = texture_type >> 29;
-    texture->data_addr      = (uint32_t)data >> 2;
+    texture->base_format = (tex_format & 0x1F000000) >> 24;
+    texture->type = texture_type >> 29;
+    texture->data_addr = (uint32_t)data >> 2;
     texture->swizzle_format = (tex_format & 0x7000) >> 12;
     texture->normalize_mode = 1;
-    texture->min_filter     = SCE_GXM_TEXTURE_FILTER_POINT;
-    texture->mag_filter     = SCE_GXM_TEXTURE_FILTER_POINT;
+    texture->min_filter = SCE_GXM_TEXTURE_FILTER_POINT;
+    texture->mag_filter = SCE_GXM_TEXTURE_FILTER_POINT;
 
     return 0;
 }
@@ -1751,7 +1751,7 @@ EXPORT(SceGxm, 0x277794C4, const SceGxmProgramParameter *, sceGxmProgramFindPara
 
     for (uint32_t i = 0; i < program->parameter_count; i++) {
         parameter_bytes = (const uint8_t *)&parameters[i];
-        parameter_name  = (const char *)(parameter_bytes + parameters[i].name_offset);
+        parameter_name = (const char *)(parameter_bytes + parameters[i].name_offset);
         if (strcmp(parameter_name, name) == 0)
             return (const SceGxmProgramParameter *)parameter_bytes;
     }
@@ -1848,7 +1848,7 @@ static void upload_fragment_texture_descriptors(SceGxmContext *context)
         if (!texture->data_addr)
             continue;
 
-        tex_data  = (void *)(texture->data_addr << 2);
+        tex_data = (void *)(texture->data_addr << 2);
         tex_block = SceSysmem_get_vita_memblock_info_for_addr(tex_data);
         if (!tex_block)
             continue;
@@ -1856,14 +1856,14 @@ static void upload_fragment_texture_descriptors(SceGxmContext *context)
         dkSamplerDefaults(&sampler);
         sampler.wrapMode[0] = gxm_texture_addr_mode_to_dk_wrap_mode(texture->uaddr_mode);
         sampler.wrapMode[1] = gxm_texture_addr_mode_to_dk_wrap_mode(texture->vaddr_mode);
-        sampler.minFilter   = gxm_texture_filter_to_dk_filter(texture->min_filter);
-        sampler.magFilter   = gxm_texture_filter_to_dk_filter(texture->mag_filter);
+        sampler.minFilter = gxm_texture_filter_to_dk_filter(texture->min_filter);
+        sampler.magFilter = gxm_texture_filter_to_dk_filter(texture->mag_filter);
         dkSamplerDescriptorInitialize(&descriptors.samplers[i], &sampler);
 
         dkImageLayoutMakerDefaults(&image_layout_maker, g_dk_device);
-        image_layout_maker.flags         = DkImageFlags_PitchLinear;
-        image_layout_maker.type          = DkImageType_2D;
-        image_layout_maker.format        = DkImageFormat_RGBA8_Unorm;
+        image_layout_maker.flags = DkImageFlags_PitchLinear;
+        image_layout_maker.type = DkImageType_2D;
+        image_layout_maker.format = DkImageFormat_RGBA8_Unorm;
         image_layout_maker.dimensions[0] = gxm_texture_get_width(texture);
         image_layout_maker.dimensions[1] = gxm_texture_get_height(texture);
         image_layout_maker.pitchStride =
@@ -1889,10 +1889,10 @@ static void upload_fragment_texture_descriptors(SceGxmContext *context)
 static void context_flush_dirty_state(SceGxmContext *context)
 {
     const DkShader *shaders[2];
-    const SceGxmVertexProgram *vertex_program     = context->state.vertex_program;
+    const SceGxmVertexProgram *vertex_program = context->state.vertex_program;
     const SceGxmFragmentProgram *fragment_program = context->state.fragment_program;
-    const SceGxmVertexAttribute *attributes       = vertex_program->attributes;
-    const SceGxmVertexStream *streams             = vertex_program->streams;
+    const SceGxmVertexAttribute *attributes = vertex_program->attributes;
+    const SceGxmVertexStream *streams = vertex_program->streams;
     DkVtxAttribState vertex_attrib_state[SCE_GXM_MAX_VERTEX_ATTRIBUTES];
     DkVtxBufferState vertex_buffer_state[SCE_GXM_MAX_VERTEX_STREAMS];
     uint32_t i;
@@ -1902,16 +1902,16 @@ static void context_flush_dirty_state(SceGxmContext *context)
                vertex_program->attributeCount * sizeof(*vertex_attrib_state));
         for (i = 0; i < vertex_program->attributeCount; i++) {
             vertex_attrib_state[i].bufferId = attributes[i].streamIndex;
-            vertex_attrib_state[i].isFixed  = 0;
-            vertex_attrib_state[i].offset   = attributes[i].offset;
+            vertex_attrib_state[i].isFixed = 0;
+            vertex_attrib_state[i].offset = attributes[i].offset;
             vertex_attrib_state[i].size =
                 gxm_to_dk_vtx_attrib_size(attributes[i].format, attributes[i].componentCount);
-            vertex_attrib_state[i].type   = gxm_to_dk_vtx_attrib_type(attributes[i].format);
+            vertex_attrib_state[i].type = gxm_to_dk_vtx_attrib_type(attributes[i].format);
             vertex_attrib_state[i].isBgra = 0;
         }
 
         for (i = 0; i < vertex_program->streamCount; i++) {
-            vertex_buffer_state[i].stride  = streams[i].stride;
+            vertex_buffer_state[i].stride = streams[i].stride;
             vertex_buffer_state[i].divisor = 0;
         }
 

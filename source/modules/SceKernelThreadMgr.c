@@ -88,7 +88,7 @@ static SceUID create_thread(const char *name, SceKernelThreadEntry entry, int in
     memset(ti, 0, sizeof(*ti));
     ti->uid = SceSysmem_get_next_uid();
     strncpy(ti->name, name, sizeof(ti->name) - 1);
-    ti->entry    = entry;
+    ti->entry = entry;
     ti->vita_tls = malloc(SCE_KERNEL_TLS_SIZE);
 
     res = threadCreate(&ti->thread, thread_entry_wrapper, ti, NULL, stackSize, priority, -2);
@@ -175,7 +175,7 @@ EXPORT(SceThreadmgrCoredumpTime, 0x0C8A38E1, int NORETURN, sceKernelExitThread, 
 {
     VitaThreadInfo *ti = SceKernelThreadMgr_get_thread_info();
 
-    ti->return_status  = status;
+    ti->return_status = status;
     threadExit();
 }
 
@@ -232,7 +232,7 @@ int SceKernelThreadMgr_main_entry(SceKernelThreadEntry entry, int args, void *ar
 
     process_exit_event = SceLibKernel_get_process_exit_uevent();
 
-    res                = waitSingle(waiterForUEvent(process_exit_event), -1);
+    res = waitSingle(waiterForUEvent(process_exit_event), -1);
     if (R_FAILED(res)) {
         LOG("Error waiting for the process to finish: 0x%" PRIx32, res);
         return -1;

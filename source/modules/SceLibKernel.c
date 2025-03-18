@@ -173,8 +173,8 @@ EXPORT(SceLibKernel, 0x6C60AC61, SceUID, sceIoOpen, const char *file, int flags,
     }
 
     memset(vfile, 0, sizeof(*vfile));
-    vfile->uid  = SceSysmem_get_next_uid();
-    vfile->fp   = fp;
+    vfile->uid = SceSysmem_get_next_uid();
+    vfile->fp = fp;
     vfile->file = strdup(file);
 
     rwlockWriteLock(&g_vita_opened_files_lock);
@@ -262,8 +262,8 @@ EXPORT(SceLibKernel, 0xA9283DD0, SceUID, sceIoDopen, const char *dirname)
     }
 
     memset(vdir, 0, sizeof(*vdir));
-    vdir->uid  = SceSysmem_get_next_uid();
-    vdir->dir  = dir;
+    vdir->uid = SceSysmem_get_next_uid();
+    vdir->dir = dir;
     vdir->path = strdup(dirname);
 
     rwlockWriteLock(&g_vita_opened_dirs_lock);
@@ -296,12 +296,12 @@ EXPORT(SceIofilemgr, 0x422A221A, int, sceIoDclose, SceUID fd)
 
 static inline void tm_to_sce_datetime(SceDateTime *dt, const struct tm *tm)
 {
-    dt->year        = tm->tm_year;
-    dt->month       = tm->tm_mon;
-    dt->day         = tm->tm_mday;
-    dt->hour        = tm->tm_hour;
-    dt->minute      = tm->tm_min;
-    dt->second      = tm->tm_sec;
+    dt->year = tm->tm_year;
+    dt->month = tm->tm_mon;
+    dt->day = tm->tm_mday;
+    dt->hour = tm->tm_hour;
+    dt->minute = tm->tm_min;
+    dt->second = tm->tm_sec;
     dt->microsecond = 0;
 }
 
