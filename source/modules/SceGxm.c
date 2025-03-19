@@ -1,6 +1,7 @@
 #include "config.h"
 
 #include <deko3d.h>
+#include <m-dict.h>
 #include <psp2/gxm.h>
 #include <psp2/kernel/error.h>
 #include <psp2/kernel/threadmgr.h>
@@ -23,6 +24,16 @@
 #define DUMP_SHADER_SPIRV     0
 #define DUMP_SHADER_GLSL      0
 #define ENABLE_SHADER_DUMP_CB 0
+
+/* Shadow depth/stencil surface */
+typedef struct {
+    uint16_t width;
+    uint16_t height;
+    uint32_t size;
+    DkMemBlock memblock;
+    DkImage image;
+    DkImageView view;
+} shadow_ds_surface_t;
 
 typedef struct SceGxmContext {
     SceGxmContextParams params;
@@ -56,14 +67,7 @@ typedef struct SceGxmContext {
             uint8_t write_mask;
         } front_stencil, back_stencil;
         SceGxmTextureInner fragment_textures[SCE_GXM_MAX_TEXTURE_UNITS];
-        struct {
-            uint16_t width;
-            uint16_t height;
-            uint32_t size;
-            DkMemBlock memblock;
-            DkImage image;
-            DkImageView view;
-        } shadow_ds_surface;
+        shadow_ds_surface_t shadow_ds_surface;
         struct {
             void *cpu_addr;
             DkGpuAddr gpu_addr;
@@ -166,14 +170,15 @@ struct GXMRenderFragUniformBlock {
 
 static bool g_gxm_initialized;
 
-/* Deko3D */
-
 static DkDevice g_dk_device;
 static DkQueue g_render_queue;
 static DkMemBlock g_notification_region_memblock;
 static DisplayQueueControlBlock *g_display_queue;
 static DkMemBlock g_code_memblock;
 static uint32_t g_code_mem_offset;
+
+DICT_DEF2(shadow_ds_surface_dict, void *, M_DEFAULT_OPLIST, shadow_ds_surface_t *, M_POD_OPLIST)
+static shadow_ds_surface_dict_t g_shadow_ds_surfaces;
 
 static int SceGxmDisplayQueue_thread(SceSize args, void *argp);
 
