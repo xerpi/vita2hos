@@ -9,8 +9,8 @@
 #include "log.h"
 #include "module.h"
 #include "util.h"
-#include "vita_to_dk.h"
 
+#include "display/display_to_dk.h"
 #include "modules/SceSysmem.h"
 
 #define SWAPCHAIN_SIZE 2

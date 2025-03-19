@@ -1,33 +1,11 @@
-#ifndef VITA_TO_DK_H
-#define VITA_TO_DK_H
+#ifndef GXM_TO_DK_H
+#define GXM_TO_DK_H
 
 #include <assert.h>
 #include <deko3d.h>
-#include <psp2/display.h>
 #include <psp2/gxm.h>
 
-#define SCE_GXM_COLOR_BASE_FORMAT_MASK   0xF1800000U
-#define SCE_GXM_TEXTURE_BASE_FORMAT_MASK 0x9f000000U
-
-static inline uint32_t display_pixelformat_bytes_per_pixel(SceDisplayPixelFormat format)
-{
-    switch (format) {
-    case SCE_DISPLAY_PIXELFORMAT_A8B8G8R8:
-        return 4;
-    default:
-        UNREACHABLE("Unsupported SceDisplayPixelFormat");
-    }
-}
-
-static inline DkImageFormat display_pixelformat_to_dk_image_format(SceDisplayPixelFormat format)
-{
-    switch (format) {
-    case SCE_DISPLAY_PIXELFORMAT_A8B8G8R8:
-        return DkImageFormat_RGBA8_Unorm;
-    default:
-        UNREACHABLE("Unsupported SceDisplayPixelFormat");
-    }
-}
+#include "gxm/util.h"
 
 static inline uint32_t gxm_color_surface_type_to_dk_image_flags(SceGxmColorSurfaceType type)
 {
