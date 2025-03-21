@@ -1624,9 +1624,9 @@ static void context_flush_dirty_state(SceGxmContext *context)
     const SceGxmVertexStream *streams = vertex_program->streams;
     DkVtxAttribState vertex_attrib_state[SCE_GXM_MAX_VERTEX_ATTRIBUTES];
     DkVtxBufferState vertex_buffer_state[SCE_GXM_MAX_VERTEX_STREAMS];
-    uint32_t i;
+    uint32_t i, shader_count = 0, shader_stage_mask = 0;
 
-    if (context->state.dirty.bit.vertex_shader) {
+    if (context->state.dirty.bit.vertex_shader && vertex_program) {
         memset(vertex_attrib_state, 0,
                vertex_program->attributeCount * sizeof(*vertex_attrib_state));
         for (i = 0; i < vertex_program->attributeCount; i++) {
@@ -1650,16 +1650,18 @@ static void context_flush_dirty_state(SceGxmContext *context)
                                    vertex_program->streamCount);
     }
 
-    if (context->state.dirty.bit.vertex_shader && context->state.dirty.bit.fragment_shader) {
-        shaders[0] = &vertex_program->dk_shader;
-        shaders[1] = &fragment_program->dk_shader;
-        dkCmdBufBindShaders(context->cmdbuf, DkStageFlag_Vertex | DkStageFlag_Fragment, shaders, 2);
-    } else if (context->state.dirty.bit.vertex_shader) {
-        shaders[0] = &vertex_program->dk_shader;
-        dkCmdBufBindShaders(context->cmdbuf, DkStageFlag_Vertex, shaders, 1);
-    } else if (context->state.dirty.bit.fragment_shader) {
-        shaders[0] = &fragment_program->dk_shader;
-        dkCmdBufBindShaders(context->cmdbuf, DkStageFlag_Fragment, shaders, 1);
+    if (context->state.dirty.bit.vertex_shader || context->state.dirty.bit.fragment_shader) {
+        if (vertex_program) {
+            shaders[shader_count++] = &vertex_program->dk_shader;
+            shader_stage_mask |= DkStageFlag_Vertex;
+        }
+        if (fragment_program) {
+            shaders[shader_count++] = &fragment_program->dk_shader;
+            shader_stage_mask |= DkStageFlag_Fragment;
+        }
+
+        /* Always replaces the entire shader pipeline. Unspecified stages are disabled. */
+        dkCmdBufBindShaders(context->cmdbuf, shader_stage_mask, shaders, shader_count);
     }
 
     if (context->state.dirty.bit.depth_stencil)
