@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.13)
 
 set(VITA2HOS_MAJOR 0)
-set(VITA2HOS_MINOR 3)
+set(VITA2HOS_MINOR 4)
 set(VITA2HOS_PATCH 0)
 execute_process(COMMAND
     git describe --dirty --always --exclude '*'
