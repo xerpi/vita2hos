@@ -14,9 +14,21 @@ static inline uint32_t gxm_color_surface_type_to_dk_image_flags(SceGxmColorSurfa
         return DkImageFlags_PitchLinear;
     case SCE_GXM_COLOR_SURFACE_TILED:
     case SCE_GXM_COLOR_SURFACE_SWIZZLED:
-        return DkImageFlags_BlockLinear | DkImageFlags_HwCompression;
+        return DkImageFlags_BlockLinear;
     default:
         UNREACHABLE("Unsupported SceGxmColorSurfaceType");
+    }
+}
+
+static inline uint32_t gxm_ds_surface_type_to_dk_image_flags(SceGxmDepthStencilSurfaceType type)
+{
+    switch (type) {
+    case SCE_GXM_DEPTH_STENCIL_SURFACE_LINEAR:
+        return DkImageFlags_PitchLinear;
+    case SCE_GXM_DEPTH_STENCIL_SURFACE_TILED:
+        /* TODO */
+    default:
+        UNREACHABLE("Unsupported SceGxmDepthStencilSurfaceType");
     }
 }
 
@@ -157,6 +169,22 @@ static inline DkImageFormat gxm_color_format_to_dk_image_format(SceGxmColorForma
         return DkImageFormat_RGBA8_Unorm;
     default:
         UNREACHABLE("Unsupported SceGxmColorFormat");
+    }
+}
+
+static inline DkImageFormat gxm_ds_format_to_dk_image_format(SceGxmDepthStencilFormat format)
+{
+    switch (format) {
+    case SCE_GXM_DEPTH_STENCIL_FORMAT_DF32:
+        return DkImageFormat_ZF32;
+    case SCE_GXM_DEPTH_STENCIL_FORMAT_S8:
+        return DkImageFormat_S8;
+    case SCE_GXM_DEPTH_STENCIL_FORMAT_S8D24:
+        return DkImageFormat_Z24S8;
+    case SCE_GXM_DEPTH_STENCIL_FORMAT_D16:
+        return DkImageFormat_Z16;
+    default:
+        UNREACHABLE("Unsupported SceGxmDepthStencilFormat");
     }
 }
 

@@ -235,4 +235,18 @@ static inline bool gxm_base_format_is_paletted_format(SceGxmTextureBaseFormat ba
            base_format == SCE_GXM_TEXTURE_BASE_FORMAT_P4;
 }
 
+static inline SceGxmDepthStencilFormat
+gxm_ds_surface_get_format(const SceGxmDepthStencilSurface *surface)
+{
+    return (surface->zlsControl >> SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_FORMAT_OFFSET) &
+           SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_FORMAT_MASK;
+}
+
+static inline SceGxmDepthStencilSurfaceType
+gxm_ds_surface_get_type(const SceGxmDepthStencilSurface *surface)
+{
+    return (surface->zlsControl & (SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_TYPE_MASK
+                                   << SCE_GXM_DEPTH_STENCIL_ZLS_CTRL_TYPE_OFFSET));
+}
+
 #endif
