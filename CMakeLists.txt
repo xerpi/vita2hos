@@ -40,6 +40,7 @@ add_compile_options(
 add_subdirectory(external)
 
 add_executable(vita2hos
+    source/deko_utils.c
     source/load.c
     source/log.c
     source/main.c

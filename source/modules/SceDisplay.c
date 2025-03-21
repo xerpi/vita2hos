@@ -5,7 +5,7 @@
 #include <switch.h>
 
 #include "modules/SceDisplay.h"
-#include "dk_helpers.h"
+#include "deko_utils.h"
 #include "log.h"
 #include "module.h"
 #include "util.h"
@@ -74,52 +74,6 @@ static void create_swapchain(uint32_t width, uint32_t height)
     g_swapchain_created = true;
 }
 
-static void cmdbuf_copy_image(DkCmdBuf cmdbuf, DkImage const *src_image, uint32_t src_width,
-                              uint32_t src_height, DkImage const *dst_image, uint32_t dst_width,
-                              uint32_t dst_height)
-{
-    DkImageView src_view, dst_view;
-    DkImageRect src_rect, dst_rect;
-
-    src_rect.x = src_rect.y = src_rect.z = 0;
-    src_rect.width = src_width;
-    src_rect.height = src_height;
-    src_rect.depth = 1;
-
-    dst_rect.x = dst_rect.y = dst_rect.z = 0;
-    dst_rect.width = dst_width;
-    dst_rect.height = dst_height;
-    dst_rect.depth = 1;
-
-    dkImageViewDefaults(&src_view, src_image);
-    dkImageViewDefaults(&dst_view, dst_image);
-    dkCmdBufBlitImage(cmdbuf, &src_view, &src_rect, &dst_view, &dst_rect, 0, 1);
-}
-
-static bool dkimage_for_existing_framebuffer(DkImage *image, const void *addr, uint32_t width,
-                                             uint32_t height, uint32_t stride,
-                                             SceDisplayPixelFormat pixelfmt)
-{
-    DkMemBlock memblock;
-    DkImageLayoutMaker image_layout_maker;
-    DkImageLayout image_layout;
-
-    memblock = SceSysmem_get_dk_memblock_for_addr(addr);
-    if (!memblock)
-        return false;
-
-    dkImageLayoutMakerDefaults(&image_layout_maker, g_dk_device);
-    image_layout_maker.flags = DkImageFlags_PitchLinear | DkImageFlags_Usage2DEngine;
-    image_layout_maker.format = display_pixelformat_to_dk_image_format(pixelfmt);
-    image_layout_maker.dimensions[0] = width;
-    image_layout_maker.dimensions[1] = height;
-    image_layout_maker.pitchStride = stride * display_pixelformat_bytes_per_pixel(pixelfmt);
-    dkImageLayoutInitialize(&image_layout, &image_layout_maker);
-    dkImageInitialize(image, &image_layout, memblock, dk_memblock_cpu_addr_offset(memblock, addr));
-
-    return true;
-}
-
 static void presenter_thread_func(void *arg)
 {
     DkCmdList cmdlist;
@@ -152,7 +106,8 @@ static void presenter_thread_func(void *arg)
         }
 
         /* Build a DkImage for the source PSVita-configured framebuffer */
-        if (!dkimage_for_existing_framebuffer(&src_image, base, width, height, stride, pixelfmt))
+        if (!dk_image_for_existing_framebuffer(g_dk_device, &src_image, base, width, height, stride,
+                                               pixelfmt))
             goto next_frame_sleep;
 
         /* Acquire a framebuffer from the swapchain */
@@ -162,8 +117,8 @@ static void presenter_thread_func(void *arg)
         dkCmdBufWaitFence(g_cmdbuf, &acquire_fence);
 
         /* 2D copy command from the PSVita-configured framebuffer to the swapchain framebuffer */
-        cmdbuf_copy_image(g_cmdbuf, &src_image, width, height, &g_swapchain_images[slot], width,
-                          height);
+        dk_cmdbuf_copy_image(g_cmdbuf, &src_image, width, height, &g_swapchain_images[slot], width,
+                             height);
 
         /* Finish the command list */
         cmdlist = dkCmdBufFinishList(g_cmdbuf);

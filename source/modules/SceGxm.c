@@ -10,7 +10,7 @@
 
 #include "modules/SceGxm.h"
 #include "circ_buf.h"
-#include "dk_helpers.h"
+#include "deko_utils.h"
 #include "log.h"
 #include "module.h"
 #include "uam_compiler_iface_c.h"
@@ -24,16 +24,6 @@
 #define DUMP_SHADER_SPIRV     0
 #define DUMP_SHADER_GLSL      0
 #define ENABLE_SHADER_DUMP_CB 0
-
-/* Shadow depth/stencil surface */
-typedef struct {
-    uint16_t width;
-    uint16_t height;
-    uint32_t size;
-    DkMemBlock memblock;
-    DkImage image;
-    DkImageView view;
-} shadow_ds_surface_t;
 
 typedef struct SceGxmContext {
     SceGxmContextParams params;
@@ -53,6 +43,8 @@ typedef struct SceGxmContext {
         } vertex_rb, fragment_rb;
         const SceGxmVertexProgram *vertex_program;
         const SceGxmFragmentProgram *fragment_program;
+        const SceGxmRenderTarget *render_target;
+        SceGxmColorSurfaceInner *color_surface;
         SceGxmSyncObject *fragment_sync_object;
         bool in_scene;
         bool two_sided_mode;
@@ -67,7 +59,7 @@ typedef struct SceGxmContext {
             uint8_t write_mask;
         } front_stencil, back_stencil;
         SceGxmTextureInner fragment_textures[SCE_GXM_MAX_TEXTURE_UNITS];
-        shadow_ds_surface_t shadow_ds_surface;
+        dk_surface_t background_ds;
         struct {
             void *cpu_addr;
             DkGpuAddr gpu_addr;
@@ -126,6 +118,7 @@ typedef struct SceGxmFragmentProgram {
 
 typedef struct SceGxmRenderTarget {
     SceGxmRenderTargetParams params;
+    dk_surface_t shadow_color_surface;
 } SceGxmRenderTarget;
 
 typedef struct {
@@ -177,7 +170,7 @@ static DisplayQueueControlBlock *g_display_queue;
 static DkMemBlock g_code_memblock;
 static uint32_t g_code_mem_offset;
 
-DICT_DEF2(shadow_ds_surface_dict, void *, M_DEFAULT_OPLIST, shadow_ds_surface_t *, M_POD_OPLIST)
+DICT_DEF2(shadow_ds_surface_dict, void *, M_DEFAULT_OPLIST, dk_surface_t *, M_POD_OPLIST)
 static shadow_ds_surface_dict_t g_shadow_ds_surfaces;
 
 static int SceGxmDisplayQueue_thread(SceSize args, void *argp);
@@ -385,8 +378,8 @@ EXPORT(SceGxm, 0xEDDC5FB2, int, sceGxmDestroyContext, SceGxmContext *context)
     dkMemBlockDestroy(context->fragment_tex_descriptor_set_memblock);
     dkCmdBufDestroy(context->cmdbuf);
 
-    if (context->state.shadow_ds_surface.memblock)
-        dkMemBlockDestroy(context->state.shadow_ds_surface.memblock);
+    if (context->state.background_ds.memblock)
+        dkMemBlockDestroy(context->state.background_ds.memblock);
 
     return 0;
 }
@@ -599,11 +592,11 @@ EXPORT(SceGxm, 0x4ED2E49D, int, sceGxmShaderPatcherCreateFragmentProgram,
     if (blendInfo) {
         fragment_program->blendInfo = *blendInfo;
     } else {
-        fragment_program->blendInfo =
-            (SceGxmBlendInfo){ SCE_GXM_COLOR_MASK_ALL,    SCE_GXM_BLEND_FUNC_NONE,
-                               SCE_GXM_BLEND_FUNC_NONE,   SCE_GXM_BLEND_FACTOR_ONE,
-                               SCE_GXM_BLEND_FACTOR_ZERO, SCE_GXM_BLEND_FACTOR_ONE,
-                               SCE_GXM_BLEND_FACTOR_ZERO };
+        fragment_program->blendInfo = (SceGxmBlendInfo){
+            SCE_GXM_COLOR_MASK_ALL,    SCE_GXM_BLEND_FUNC_NONE,   SCE_GXM_BLEND_FUNC_NONE,
+            SCE_GXM_BLEND_FACTOR_ONE,  SCE_GXM_BLEND_FACTOR_ZERO, SCE_GXM_BLEND_FACTOR_ONE,
+            SCE_GXM_BLEND_FACTOR_ZERO,
+        };
     }
 
     ret = translate_shader(&fragment_program->dk_shader, programId->programHeader,
@@ -647,11 +640,24 @@ EXPORT(SceGxm, 0x207AF96B, int, sceGxmCreateRenderTarget, const SceGxmRenderTarg
 {
     SceGxmRenderTarget *render_target;
 
+    if (!g_gxm_initialized)
+        return SCE_GXM_ERROR_UNINITIALIZED;
+    else if (!params)
+        return SCE_GXM_ERROR_INVALID_POINTER;
+    else if (params->scenesPerFrame > SCE_GXM_MAX_SCENES_PER_RENDERTARGET)
+        return SCE_GXM_ERROR_INVALID_VALUE;
+
     render_target = malloc(sizeof(*render_target));
     if (!render_target)
         return SCE_KERNEL_ERROR_NO_MEMORY;
 
     render_target->params = *params;
+    /* Create shadow color surface */
+    dk_surface_create(g_dk_device, &render_target->shadow_color_surface, params->width,
+                      params->height, DkImageFormat_RGBA8_Unorm,
+                      DkImageFlags_UsageRender | DkImageFlags_Usage2DEngine |
+                          DkImageFlags_HwCompression);
+
     *renderTarget = render_target;
 
     return 0;
@@ -659,6 +665,7 @@ EXPORT(SceGxm, 0x207AF96B, int, sceGxmCreateRenderTarget, const SceGxmRenderTarg
 
 EXPORT(SceGxm, 0x0B94C50A, int, sceGxmDestroyRenderTarget, SceGxmRenderTarget *renderTarget)
 {
+    dk_surface_destroy(&renderTarget->shadow_color_surface);
     free(renderTarget);
     return 0;
 }
@@ -689,7 +696,7 @@ EXPORT(SceGxm, 0xCA9D41D1, int, sceGxmDepthStencilSurfaceInit, SceGxmDepthStenci
        unsigned int strideInSamples, void *depthData, void *stencilData)
 
 {
-    shadow_ds_surface_t *shadow;
+    dk_surface_t *shadow;
 
     if (!surface)
         return SCE_GXM_ERROR_INVALID_POINTER;
@@ -803,45 +810,6 @@ EXPORT(SceGxm, 0x1A68C8D2, void, sceGxmSetBackStencilFunc, SceGxmContext *contex
     context->state.dirty.bit.back_stencil = true;
 }
 
-static inline void dk_image_view_for_gxm_color_surface(DkImage *image, DkImageView *view,
-                                                       DkMemBlock block,
-                                                       const SceGxmColorSurfaceInner *surface)
-{
-    DkImageLayoutMaker maker;
-    DkImageLayout layout;
-
-    dkImageLayoutMakerDefaults(&maker, g_dk_device);
-    maker.flags = gxm_color_surface_type_to_dk_image_flags(surface->surfaceType) |
-                  DkImageFlags_UsageRender | DkImageFlags_Usage2DEngine;
-    maker.format = gxm_color_format_to_dk_image_format(surface->colorFormat);
-    maker.dimensions[0] = surface->width;
-    maker.dimensions[1] = surface->height;
-    maker.pitchStride =
-        surface->strideInPixels * gxm_color_format_bytes_per_pixel(surface->colorFormat);
-    dkImageLayoutInitialize(&layout, &maker);
-    dkImageInitialize(image, &layout, block, dk_memblock_cpu_addr_offset(block, surface->data));
-    dkImageViewDefaults(view, image);
-}
-
-static inline void
-dk_image_view_for_gxm_depth_stencil_surface(DkImage *image, DkImageView *view, DkMemBlock block,
-                                            uint32_t width, uint32_t height,
-                                            const SceGxmDepthStencilSurface *surface)
-{
-    DkImageLayoutMaker maker;
-    DkImageLayout layout;
-
-    dkImageLayoutMakerDefaults(&maker, g_dk_device);
-    maker.flags = DkImageFlags_UsageRender;
-    maker.format = DkImageFormat_Z24S8;
-    maker.dimensions[0] = width;
-    maker.dimensions[1] = height;
-    dkImageLayoutInitialize(&layout, &maker);
-    dkImageInitialize(image, &layout, block,
-                      dk_memblock_cpu_addr_offset(block, surface->depthData));
-    dkImageViewDefaults(view, image);
-}
-
 static void set_vita3k_gxm_uniform_blocks(SceGxmContext *context, const DkViewport *viewport)
 {
     const struct GXMRenderVertUniformBlock vert_unif = {
@@ -874,46 +842,25 @@ static void set_vita3k_gxm_uniform_blocks(SceGxmContext *context, const DkViewpo
                               ALIGN(sizeof(frag_unif), DK_UNIFORM_BUF_ALIGNMENT));
 }
 
-static void ensure_shadow_ds_surface(SceGxmContext *context, uint32_t width, uint32_t height)
+static void ensure_background_ds(SceGxmContext *context, uint32_t width, uint32_t height)
 {
-    DkImageLayoutMaker maker;
-    DkImageLayout layout;
-    uint32_t ds_surface_size, ds_surface_align;
-
-    dkImageLayoutMakerDefaults(&maker, g_dk_device);
-    maker.flags = DkImageFlags_UsageRender;
-    maker.format = DkImageFormat_Z24S8;
-    maker.dimensions[0] = width;
-    maker.dimensions[1] = height;
-    dkImageLayoutInitialize(&layout, &maker);
-
-    ds_surface_size = dkImageLayoutGetSize(&layout);
-    ds_surface_align = dkImageLayoutGetAlignment(&layout);
-    ds_surface_size = ALIGN(ds_surface_size, ds_surface_align);
-
-    LOG("Creating D/S surface: %d x %d, size %d, align: %d", width, height, ds_surface_size,
-        ds_surface_align);
-
-    if (ds_surface_size > context->state.shadow_ds_surface.size) {
-        if (context->state.shadow_ds_surface.memblock) {
-            /* TODO: Wait until previous depth/stencil buffer is not used anymore before
-             * deallocating it */
-            dkMemBlockDestroy(context->state.shadow_ds_surface.memblock);
-        }
-
-        context->state.shadow_ds_surface.memblock = dk_alloc_memblock(
-            g_dk_device, ds_surface_size,
-            DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Image);
+    /* Already initialized */
+    if ((context->state.background_ds.width == width) &&
+        (context->state.background_ds.height == height)) {
+        return;
     }
 
-    dkImageInitialize(&context->state.shadow_ds_surface.image, &layout,
-                      context->state.shadow_ds_surface.memblock, 0);
-    dkImageViewDefaults(&context->state.shadow_ds_surface.view,
-                        &context->state.shadow_ds_surface.image);
+    if (context->state.background_ds.memblock) {
+        LOG("Destroying old background D/S surface");
+        dkQueueWaitIdle(g_render_queue);
+        dkMemBlockDestroy(context->state.background_ds.memblock);
+        dk_surface_destroy(&context->state.background_ds);
+    }
 
-    context->state.shadow_ds_surface.width = width;
-    context->state.shadow_ds_surface.height = height;
-    context->state.shadow_ds_surface.size = ds_surface_size;
+    LOG("Creating background D/S surface: %d x %d", width, height);
+    dk_surface_create(
+        g_dk_device, &context->state.background_ds, width, height, DkImageFormat_Z24S8,
+        DkImageFlags_UsageRender | DkImageFlags_HwCompression | DkImageFlags_Usage2DEngine);
 }
 
 EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsigned int flags,
@@ -921,56 +868,34 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
        SceGxmSyncObject *vertexSyncObject, SceGxmSyncObject *fragmentSyncObject,
        const SceGxmColorSurface *colorSurface, const SceGxmDepthStencilSurface *depthStencil)
 {
-    DkMemBlock color_surface_block;
-    DkImage color_surface_image;
-    DkImageView color_surface_view;
     uint16_t rt_width = renderTarget->params.width;
     uint16_t rt_height = renderTarget->params.height;
     DkViewport viewport = { 0.0f, 0.0f, (float)rt_width, (float)rt_height, 0.0f, 1.0f };
     DkScissor scissor = { 0, 0, rt_width, rt_height };
     SceGxmColorSurfaceInner *color_surface_inner = (SceGxmColorSurfaceInner *)colorSurface;
+    DkImageView *depth_stencil_target = NULL;
 
     if (context->state.in_scene)
         return SCE_GXM_ERROR_WITHIN_SCENE;
 
-    color_surface_block = SceSysmem_get_dk_memblock_for_addr(color_surface_inner->data);
-    if (!color_surface_block)
-        return SCE_GXM_ERROR_INVALID_VALUE;
-
-    if (depthStencil) {
-        shadow_ds_surface_t *shadow_ds_surface =
-            *shadow_ds_surface_dict_get(g_shadow_ds_surfaces, depthStencil->depthData);
-        LOG("shadow_ds_surface: %p", shadow_ds_surface);
-        if ((context->state.shadow_ds_surface.width != rt_width) ||
-            (context->state.shadow_ds_surface.height != rt_height))
-            ensure_shadow_ds_surface(context, rt_width, rt_height);
-
-#if 0
-		depth_stencil_surface_block = SceSysmem_get_dk_memblock_for_addr(depthStencil->depthData);
-		if (!depth_stencil_surface_block)
-			return SCE_GXM_ERROR_INVALID_VALUE;
-
-		dk_image_view_for_gxm_depth_stencil_surface(&depth_stencil_surface_image,
-							    &depth_stencil_surface_view,
-							    depth_stencil_surface_block,
-							    rt_width, rt_height,
-							    depthStencil);
-#endif
+    /* TODO: We don't support shadow D/S yet so force background DS surface */
+    depthStencil = NULL;
+    if (!depthStencil) {
+        // dk_surface_t *background_ds =
+        //     *shadow_ds_surface_dict_get(g_shadow_ds_surfaces, depthStencil->depthData);
+        // LOG("background_ds: %p", background_ds);
+        ensure_background_ds(context, rt_width, rt_height);
+        depth_stencil_target = &context->state.background_ds.view;
     }
 
     LOG("sceGxmBeginScene to renderTarget %p, fragmentSyncObject: %p, "
         "w: %" PRId32 ", h: %" PRId32 ", stride: %" PRId32 ", CPU addr: %p",
         renderTarget, fragmentSyncObject, color_surface_inner->width, color_surface_inner->height,
-        color_surface_inner->strideInPixels, dkMemBlockGetCpuAddr(color_surface_block));
-
-    dk_image_view_for_gxm_color_surface(&color_surface_image, &color_surface_view,
-                                        color_surface_block, color_surface_inner);
+        color_surface_inner->strideInPixels, color_surface_inner->data);
 
     dkCmdBufClear(context->cmdbuf);
-
-    dkCmdBufBindRenderTarget(context->cmdbuf, &color_surface_view,
-                             depthStencil ? &context->state.shadow_ds_surface.view : NULL);
-
+    dkCmdBufBindRenderTarget(context->cmdbuf, &renderTarget->shadow_color_surface.view,
+                             depth_stencil_target);
     dkCmdBufSetViewports(context->cmdbuf, 0, &viewport, 1);
     dkCmdBufSetScissors(context->cmdbuf, 0, &scissor, 1);
     dkCmdBufBindRasterizerState(context->cmdbuf, &context->state.rasterizer);
@@ -984,17 +909,21 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
     if (fragmentSyncObject)
         dkCmdBufWaitFence(context->cmdbuf, &fragmentSyncObject->fence);
 
-    if (depthStencil && !(depthStencil->zlsControl & SCE_GXM_DEPTH_STENCIL_FORCE_LOAD_ENABLED)) {
+    if (!depthStencil) {
+        dkCmdBufClearDepthStencil(context->cmdbuf, true, 1.0f, 0xFF, 0);
+    } else if (!(depthStencil->zlsControl & SCE_GXM_DEPTH_STENCIL_FORCE_LOAD_ENABLED)) {
         dkCmdBufClearDepthStencil(context->cmdbuf, true, depthStencil->backgroundDepth, 0xFF,
                                   depthStencil->zlsControl &
                                       SCE_GXM_DEPTH_STENCIL_BG_CTRL_STENCIL_MASK);
     }
 
     context->state.discard_stencil =
-        depthStencil && !(depthStencil->zlsControl & SCE_GXM_DEPTH_STENCIL_FORCE_STORE_ENABLED);
+        !depthStencil || !(depthStencil->zlsControl & SCE_GXM_DEPTH_STENCIL_FORCE_STORE_ENABLED);
 
     /* Mark all state as dirty to make sure we bind everything before the first draw call */
     context->state.dirty.raw = ~(uint32_t)0;
+    context->state.render_target = renderTarget;
+    context->state.color_surface = (SceGxmColorSurfaceInner *)colorSurface;
     context->state.fragment_sync_object = fragmentSyncObject;
     context->state.in_scene = true;
 
@@ -1007,6 +936,9 @@ EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context,
     DkCmdList cmd_list;
     DkVariable variable;
     uint32_t offset;
+    DkImage color_surface_image;
+    const dk_surface_t *shadow_color_surface = &context->state.render_target->shadow_color_surface;
+    SceGxmColorSurfaceInner *const color_surface = context->state.color_surface;
 
     LOG("sceGxmEndScene");
 
@@ -1033,12 +965,18 @@ EXPORT(SceGxm, 0xFE300E2F, int, sceGxmEndScene, SceGxmContext *context,
                                DkPipelinePos_Bottom);
     }
 
-    if (context->state.discard_stencil) {
-        /* Wait for fragments to be completed before discarding depth/stencil buffer */
-        dkCmdBufBarrier(context->cmdbuf, DkBarrier_Fragments, 0);
-        /* Discard the stencil buffer since we don't need it anymore */
-        dkCmdBufDiscardDepthStencil(context->cmdbuf);
+    /* Wait for fragments to be completed before the copy/discarding DS buffer */
+    dkCmdBufBarrier(context->cmdbuf, DkBarrier_Fragments, 0);
+
+    /* Copy from the shadow color surface to the GXM surface */
+    if (dk_image_for_gxm_color_surface(g_dk_device, &color_surface_image, color_surface)) {
+        dk_cmdbuf_copy_image(context->cmdbuf, &shadow_color_surface->image,
+                             shadow_color_surface->width, shadow_color_surface->height,
+                             &color_surface_image, color_surface->width, color_surface->height);
     }
+
+    if (context->state.discard_stencil)
+        dkCmdBufDiscardDepthStencil(context->cmdbuf);
 
     /* Signal fence when rendering finishes */
     dkQueueSignalFence(g_render_queue, &context->state.fragment_sync_object->fence, true);

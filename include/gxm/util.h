@@ -4,6 +4,8 @@
 #include <psp2/gxm.h>
 #include <switch.h>
 
+#define SCE_GXM_MAX_SCENES_PER_RENDERTARGET 8
+
 #define SCE_GXM_NOTIFICATION_COUNT 512
 
 #define SCE_GXM_COLOR_BASE_FORMAT_MASK   0xF1800000U

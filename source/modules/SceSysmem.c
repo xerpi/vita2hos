@@ -7,7 +7,7 @@
 #include <switch.h>
 
 #include "modules/SceSysmem.h"
-#include "dk_helpers.h"
+#include "deko_utils.h"
 #include "log.h"
 #include "module.h"
 #include "util.h"
