@@ -1,7 +1,6 @@
 #include "config.h"
 
 #include <deko3d.h>
-#include <m-dict.h>
 #include <psp2/gxm.h>
 #include <psp2/kernel/error.h>
 #include <psp2/kernel/threadmgr.h>
@@ -169,9 +168,6 @@ static DkMemBlock g_notification_region_memblock;
 static DisplayQueueControlBlock *g_display_queue;
 static DkMemBlock g_code_memblock;
 static uint32_t g_code_mem_offset;
-
-DICT_DEF2(shadow_ds_surface_dict, void *, M_DEFAULT_OPLIST, dk_surface_t *, M_POD_OPLIST)
-static shadow_ds_surface_dict_t g_shadow_ds_surfaces;
 
 static int SceGxmDisplayQueue_thread(SceSize args, void *argp);
 
@@ -696,8 +692,6 @@ EXPORT(SceGxm, 0xCA9D41D1, int, sceGxmDepthStencilSurfaceInit, SceGxmDepthStenci
        unsigned int strideInSamples, void *depthData, void *stencilData)
 
 {
-    dk_surface_t *shadow;
-
     if (!surface)
         return SCE_GXM_ERROR_INVALID_POINTER;
     else if ((uint32_t)depthData % SCE_GXM_DEPTHSTENCIL_SURFACE_ALIGNMENT != 0)
@@ -717,13 +711,6 @@ EXPORT(SceGxm, 0xCA9D41D1, int, sceGxmDepthStencilSurfaceInit, SceGxmDepthStenci
     surface->stencilData = stencilData;
     surface->backgroundDepth = 1.0f;
     surface->backgroundControl = SCE_GXM_DEPTH_STENCIL_BG_CTRL_MASK_BIT;
-
-    /* Create a shadow depth/stencil surface. Lazy memory allocation. */
-    shadow = malloc(sizeof(*shadow));
-    if (!shadow)
-        return SCE_KERNEL_ERROR_NO_MEMORY;
-    memset(shadow, 0, sizeof(*shadow));
-    shadow_ds_surface_dict_set_at(g_shadow_ds_surfaces, depthData, shadow);
 
     return 0;
 }
@@ -1783,7 +1770,7 @@ DECLARE_LIBRARY(SceGxm, 0xf76b66bd);
 int SceGxm_init(DkDevice dk_device)
 {
     g_dk_device = dk_device;
-    shadow_ds_surface_dict_init(g_shadow_ds_surfaces);
+
     return 0;
 }
 
