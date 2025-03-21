@@ -689,8 +689,12 @@ EXPORT(SceGxm, 0xCA9D41D1, int, sceGxmDepthStencilSurfaceInit, SceGxmDepthStenci
        unsigned int strideInSamples, void *depthData, void *stencilData)
 
 {
+    shadow_ds_surface_t *shadow;
+
     if (!surface)
         return SCE_GXM_ERROR_INVALID_POINTER;
+    else if ((uint32_t)depthData % SCE_GXM_DEPTHSTENCIL_SURFACE_ALIGNMENT != 0)
+        return SCE_GXM_ERROR_INVALID_ALIGNMENT;
     else if ((strideInSamples == 0) || ((strideInSamples % SCE_GXM_TILE_SIZEX) != 0))
         return SCE_GXM_ERROR_INVALID_VALUE;
 
@@ -706,6 +710,13 @@ EXPORT(SceGxm, 0xCA9D41D1, int, sceGxmDepthStencilSurfaceInit, SceGxmDepthStenci
     surface->stencilData = stencilData;
     surface->backgroundDepth = 1.0f;
     surface->backgroundControl = SCE_GXM_DEPTH_STENCIL_BG_CTRL_MASK_BIT;
+
+    /* Create a shadow depth/stencil surface. Lazy memory allocation. */
+    shadow = malloc(sizeof(*shadow));
+    if (!shadow)
+        return SCE_KERNEL_ERROR_NO_MEMORY;
+    memset(shadow, 0, sizeof(*shadow));
+    shadow_ds_surface_dict_set_at(g_shadow_ds_surfaces, depthData, shadow);
 
     return 0;
 }
@@ -833,7 +844,7 @@ dk_image_view_for_gxm_depth_stencil_surface(DkImage *image, DkImageView *view, D
 
 static void set_vita3k_gxm_uniform_blocks(SceGxmContext *context, const DkViewport *viewport)
 {
-    struct GXMRenderVertUniformBlock vert_unif = {
+    const struct GXMRenderVertUniformBlock vert_unif = {
         .viewport_flip = { 1.0f, 1.0f, 1.0f, 1.0f },
         .viewport_flag = (0) ? 0.0f : 1.0f,
         .z_offset = 0.0f,
@@ -842,11 +853,13 @@ static void set_vita3k_gxm_uniform_blocks(SceGxmContext *context, const DkViewpo
         .screen_height = viewport->height
     };
 
-    struct GXMRenderFragUniformBlock frag_unif = { .back_disabled = 0.0f,
-                                                   .front_disabled = 0.0f,
-                                                   .writing_mask = 0.0f,
-                                                   .use_raw_image = 0.0f,
-                                                   .res_multiplier = 0 };
+    const struct GXMRenderFragUniformBlock frag_unif = {
+        .back_disabled = 0.0f,
+        .front_disabled = 0.0f,
+        .writing_mask = 0.0f,
+        .use_raw_image = 0.0f,
+        .res_multiplier = 0,
+    };
 
     memcpy(dkMemBlockGetCpuAddr(context->gxm_vert_unif_block_memblock), &vert_unif,
            sizeof(vert_unif));
@@ -925,6 +938,9 @@ EXPORT(SceGxm, 0x8734FF4E, int, sceGxmBeginScene, SceGxmContext *context, unsign
         return SCE_GXM_ERROR_INVALID_VALUE;
 
     if (depthStencil) {
+        shadow_ds_surface_t *shadow_ds_surface =
+            *shadow_ds_surface_dict_get(g_shadow_ds_surfaces, depthStencil->depthData);
+        LOG("shadow_ds_surface: %p", shadow_ds_surface);
         if ((context->state.shadow_ds_surface.width != rt_width) ||
             (context->state.shadow_ds_surface.height != rt_height))
             ensure_shadow_ds_surface(context, rt_width, rt_height);
@@ -1372,7 +1388,7 @@ EXPORT(SceGxm, 0x4811AECB, int, sceGxmTextureInitLinear, SceGxmTexture *texture,
 
 EXPORT(SceGxm, 0x5341BD46, void *, sceGxmTextureGetData, const SceGxmTexture *texture)
 {
-    return (void *)(((SceGxmTextureInner *)texture)->data_addr << 2);
+    return gxm_texture_get_data((SceGxmTextureInner *)texture);
 }
 
 EXPORT(SceGxm, 0xE868D2B3, SceGxmTextureFormat, sceGxmTextureGetFormat,
@@ -1613,6 +1629,7 @@ EXPORT(SceGxm, 0x7B9023C3, SceGxmParameterType, sceGxmProgramParameterGetType,
 
 static void upload_fragment_texture_descriptors(SceGxmContext *context)
 {
+    const SceGxmTextureInner *texture;
     VitaMemBlockInfo *tex_block;
     void *tex_data;
     DkSampler sampler;
@@ -1627,11 +1644,11 @@ static void upload_fragment_texture_descriptors(SceGxmContext *context)
     } descriptors;
 
     for (int i = 0; i < SCE_GXM_MAX_TEXTURE_UNITS; i++) {
-        const SceGxmTextureInner *texture = &context->state.fragment_textures[i];
+        texture = &context->state.fragment_textures[i];
         if (!texture->data_addr)
             continue;
 
-        tex_data = (void *)(texture->data_addr << 2);
+        tex_data = gxm_texture_get_data(texture);
         tex_block = SceSysmem_get_vita_memblock_info_for_addr(tex_data);
         if (!tex_block)
             continue;
@@ -1828,6 +1845,7 @@ DECLARE_LIBRARY(SceGxm, 0xf76b66bd);
 int SceGxm_init(DkDevice dk_device)
 {
     g_dk_device = dk_device;
+    shadow_ds_surface_dict_init(g_shadow_ds_surfaces);
     return 0;
 }
 
