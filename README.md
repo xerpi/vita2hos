@@ -41,7 +41,7 @@ It achieves this by redirecting the [module](https://wiki.henkaku.xyz/vita/Modul
 ### On an Emulator
 
 1. **Prepare the PlayStation Vita Executable:**
-   - Place your PlayStation Vita executable (`.velf`, `.self`, or `eboot.bin`) into the `sd:/vita2hos/` directory and rename it to `test.elf` (without any file extension).
+   - Place your PlayStation Vita executable (`.velf`, `.self`, or `eboot.bin`) into the `sd:/vita2hos/` directory and rename it to `executable` (without any file extension).
 
      - **For Yuzu-based Emulators:**
        - Access the SD directory via _File_ → _Open yuzu Folder_ → `sdmc/`.
