@@ -46,6 +46,9 @@ template <typename... Args> void LOG_CRITICAL(std::string_view fmt, Args &&...ar
     log_print(fmt::format(fmt::runtime(fmt), std::forward<Args>(args)...).c_str());
 }
 
+#undef LOG_INFO_ONCE
+#define LOG_INFO_ONCE LOG_INFO
+
 template <typename T> std::string log_hex(T val)
 {
     using unsigned_type = typename std::make_unsigned<T>::type;
