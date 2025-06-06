@@ -18,6 +18,10 @@
 #pragma once
 
 #include <filesystem>
+#include <fstream>
+#include <sstream>
+
+#include "string_utils.h"
 
 namespace fs = std::filesystem;
 
@@ -69,14 +73,86 @@ namespace fs_utils
  * \param  extension   The extension of the file (optional)
  * \return A complete Boost.Filesystem file path normalized.
  */
-inline fs::path construct_file_name(const fs::path &base_path, const fs::path &folder_path,
-                                    const fs::path &file_name, const fs::path &extension = "")
+static inline fs::path construct_file_name(const fs::path &base_path, const fs::path &folder_path,
+                                           const fs::path &file_name, const fs::path &extension)
 {
     fs::path full_file_path{ base_path / folder_path / file_name };
     if (!extension.empty())
         full_file_path.replace_extension(extension);
 
     return full_file_path;
+}
+
+static inline std::string path_to_utf8(const fs::path &path)
+{
+    if constexpr (sizeof(fs::path::value_type) == sizeof(wchar_t)) {
+        return string_utils::wide_to_utf(path.wstring());
+    } else {
+        return path.string();
+    }
+}
+
+static inline fs::path utf8_to_path(const std::string &str)
+{
+    if constexpr (sizeof(fs::path::value_type) == sizeof(wchar_t)) {
+        return fs::path{ string_utils::utf_to_wide(str) };
+    } else {
+        return fs::path{ str };
+    }
+}
+
+static inline fs::path path_concat(const fs::path &path1, const fs::path &path2)
+{
+    return fs::path{ path1.native() + path2.native() };
+}
+
+static inline void dump_data(const fs::path &path, const void *data, const std::streamsize size)
+{
+    std::ofstream of{ path, std::ofstream::binary };
+    if (!of.fail()) {
+        of.write(static_cast<const char *>(data), size);
+        of.close();
+    }
+}
+
+template <typename T> static inline bool read_data(const fs::path &path, std::vector<T> &data)
+{
+    data.clear();
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    // Get the size of the file
+    std::streamsize size = file.tellg();
+    if (size <= 0) {
+        return false;
+    }
+
+    // Resize the vector to fit the file content
+    data.resize(size);
+
+    // Go back to the beginning of the file and read the content
+    file.seekg(0, std::ios::beg);
+    if (!file.read(reinterpret_cast<char *>(data.data()), size)) {
+        return false;
+    }
+    return true;
+}
+
+static inline bool read_data(const fs::path &path, std::vector<uint8_t> &data)
+{
+    return read_data<uint8_t>(path, data);
+}
+
+static inline bool read_data(const fs::path &path, std::vector<int8_t> &data)
+{
+    return read_data<int8_t>(path, data);
+}
+
+static inline bool read_data(const fs::path &path, std::vector<char> &data)
+{
+    return read_data<char>(path, data);
 }
 
 } // namespace fs_utils
